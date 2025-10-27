@@ -6,9 +6,12 @@ torch.manual_seed(42)
 
 
 class DNN(nn.Module):
-    def __init__(self, input_dim=1081, output_dim=2):
+    def __init__(self, input_dim=1081, output_dim=2, history_length=4):
         super().__init__()
-        self.conv1 = nn.Conv1d(1, 24, kernel_size=5, stride=2, padding=2)
+        self.history_length = history_length
+        
+        # 入力チャネル数を履歴長に変更
+        self.conv1 = nn.Conv1d(history_length, 24, kernel_size=5, stride=2, padding=2)
         self.conv2 = nn.Conv1d(24, 36, kernel_size=5, stride=2, padding=2)
         self.conv3 = nn.Conv1d(36, 48, kernel_size=5, stride=2, padding=2)
         self.conv4 = nn.Conv1d(48, 64, kernel_size=3, stride=1, padding=1)
@@ -30,7 +33,8 @@ class DNN(nn.Module):
         self.relu = nn.ReLU()
 
     def forward(self, x):
-        x = x.unsqueeze(1)
+        # x の形状: (batch_size, history_length, scan_dim)
+        # Conv1dは (batch_size, channels, length) を期待するので、そのまま使える
         x = self.relu(self.conv1(x))
         x = self.relu(self.conv2(x))
         x = self.relu(self.conv3(x))
@@ -47,23 +51,27 @@ if __name__ == "__main__":
     import torch.optim as optim
     import matplotlib.pyplot as plt
     from torch.utils.data import DataLoader
-    from dataset import RosbagDataset, load_rosbag_data
+    from dataset import RosbagDataset, load_multiple_rosbags
     
     # デバイスの設定
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Using device: {device}")
 
-    model = DNN().to(device)  # モデルをGPUに転送
+    history_length = 4
+    model = DNN(history_length=history_length).to(device)  # モデルをGPUに転送
     criterion = nn.MSELoss()
     optimizer = optim.Adam(model.parameters(), lr=0.001)
     num_epochs = 100
     batch_size = 64
 
     bag_path = (
-        "../dataset/rosbag2_2025_10_08-15_15_28/rosbag2_2025_10_08-15_15_28_0.db3"
+        # "../dataset/rosbag2_2025_10_08-15_15_28/rosbag2_2025_10_08-15_15_28_0.db3"
+        "../dataset/rosbag2_2025_10_28-01_39_18/rosbag2_2025_10_28-01_39_18_0.db3"
     )
-    scan_df, synchronized_joy_df = load_rosbag_data(bag_path)
-    dataset = RosbagDataset(scan_df, synchronized_joy_df)
+    print(bag_path)
+
+    scan_df, synchronized_joy_df = load_multiple_rosbags(bag_path)
+    dataset = RosbagDataset(scan_df, synchronized_joy_df, history_length=history_length)
 
     train_size = int(0.8 * len(dataset))
     val_size = len(dataset) - train_size
