@@ -67,7 +67,7 @@ class JoyI2CController(Node):
         # Joy subscriber
         self.subscription = self.create_subscription(
             Joy,
-            '/joy',
+            '/mux_joy',
             self.joy_callback,
             10)
         
@@ -164,7 +164,7 @@ class JoyI2CController(Node):
                 
                 # 速度: 右スティック縦 (axis 1; left vertical stick)
                 # -1.0 = 後退, +1.0 = 前進
-                speed_input = msg.axes[1]  # 代替
+                speed_input = -msg.axes[1]  # 代替
                 
                 # 速度制限を適用
                 speed_input = speed_input * self.max_speed_limit

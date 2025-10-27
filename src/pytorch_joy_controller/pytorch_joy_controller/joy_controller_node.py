@@ -5,6 +5,7 @@ from sensor_msgs.msg import LaserScan, Joy
 import numpy as np
 from ament_index_python.packages import get_package_share_directory
 import os
+import time
 
 from .model_inference import Model
 
@@ -12,11 +13,12 @@ from .model_inference import Model
 class JoyControllerNode(Node):
     def __init__(self):
         super().__init__('joy_controller_node')
+        self.start_time = time.time()
         
         # パラメータの宣言
         self.declare_parameter('model_path', '')
         self.declare_parameter('scan_topic', '/scan')
-        self.declare_parameter('joy_topic', '/joy')
+        self.declare_parameter('joy_topic', '/torch_joy')
         
         # パラメータの取得
         model_path = self.get_parameter('model_path').get_parameter_value().string_value
@@ -55,6 +57,13 @@ class JoyControllerNode(Node):
     
     def scan_callback(self, msg: LaserScan):
         try:
+            # inference_time = time.time() - self.start_time
+            # # total calcurate time 結果をログ出力
+            # self.get_logger().info(f'推論時間: {inference_time*1000:.2f} ms')
+
+            # # 1 callback の時間計測
+            # self.start_time = time.time()
+
             # LaserScanデータをNumPy配列に変換
             scan_ranges = np.array(msg.ranges, dtype=np.float32)
             
@@ -70,8 +79,9 @@ class JoyControllerNode(Node):
             joy_msg = Joy()
             joy_msg.header.stamp = self.get_clock().now().to_msg()
             joy_msg.header.frame_id = "joy"
-            joy_msg.axes = [0.0, 1.0, joy_axes[1]]
-            # joy_msg.axes = [0.0, joy_axes[0], joy_axes[1]]
+            joy_axes[0] = max(min(joy_axes[0] * 4.0, 0.99), -0.99)
+            # joy_msg.axes = [0.0, 0.7, joy_axes[1]]
+            joy_msg.axes = [0.0, joy_axes[0], joy_axes[1]]
             joy_msg.buttons = []  # 必要に応じてボタンも追加可能
             
             # パブリッシュ
