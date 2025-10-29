@@ -12,3 +12,6 @@ __pycache__/
 *$py.class
 *.pyc
 *.pyo
+
+# Mac OS files
+.DS_Store
