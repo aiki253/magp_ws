@@ -1,0 +1,18 @@
+/**:
+  ros__parameters:
+    # 記録設定
+    record_all_topics: true
+    topic_list: []  # record_all_topics=falseの場合に使用
+    
+    # 保存先設定
+    save_directory: '~/rosbag/'
+    
+    # ディスク容量閾値（GB）
+    disk_space_warning_threshold_gb: 10.0
+    disk_space_critical_threshold_gb: 3.0
+    
+    # PS3コントローラーのボタンマッピング
+    button_square: 0    # □ボタン: 記録開始
+    button_cross: 1     # ×ボタン: 記録破棄
+    button_circle: 2    # ○ボタン: 記録保存
+    button_triangle: 3  # △ボタン: システムアンロック用
