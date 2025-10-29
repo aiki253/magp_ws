@@ -24,7 +24,7 @@ class BagRecorderNode(Node):
         
         # パラメータの宣言
         self.declare_parameter('record_all_topics', True)
-        self.declare_parameter('topic_list', [])
+        self.declare_parameter('topic_list', [''])
         self.declare_parameter('save_directory', '~/rosbag/')
         self.declare_parameter('disk_space_warning_threshold_gb', 10.0)
         self.declare_parameter('disk_space_critical_threshold_gb', 3.0)
