@@ -57,6 +57,10 @@ class JoyI2CController(Node):
         # 速度制限（安全のため）
         self.max_speed_limit = 0.5  # 最大50%に制限（調整可能）
         
+        # 十字キーの前回の状態を保存（押下検出用）
+        self.prev_dpad_up = 0
+        self.prev_dpad_down = 0
+        
         # デッドゾーン設定
         self.speed_deadzone = 0.05    # スピード用デッドゾーン
         self.steering_deadzone = 0.05 # ステアリング用デッドゾーン
@@ -64,11 +68,18 @@ class JoyI2CController(Node):
         # ESC 初期化
         self._initialize_esc()
         
-        # Joy subscriber
+        # Joy subscriber for control
         self.subscription = self.create_subscription(
             Joy,
             '/mux_joy',
             self.joy_callback,
+            10)
+        
+        # Joy subscriber for speed limit adjustment
+        self.joy_limit_subscription = self.create_subscription(
+            Joy,
+            '/joy',
+            self.joy_limit_callback,
             10)
         
         # タイマー（定期的な状態表示）
@@ -79,6 +90,7 @@ class JoyI2CController(Node):
         self.get_logger().info('Left stick (horizontal): steering')
         self.get_logger().info('Right stick (vertical): speed')
         self.get_logger().info('Button A: neutral, Button B: stop')
+        self.get_logger().info('/joy D-pad up/down: speed limit adjustment')
         
     def _initialize_esc(self):
         """ESC を正しく初期化"""
@@ -174,30 +186,45 @@ class JoyI2CController(Node):
                 self.set_motor_speed(speed_input)
             
             # ボタン処理
-            if len(msg.buttons) > 0:
-                # Button A (index 0): ニュートラル
-                if msg.buttons[0]:
-                    self.set_steering_angle(0)
-                    self.set_motor_speed(0)
-                    self.get_logger().info('Reset to neutral')
+            # if len(msg.buttons) > 0:
+            #     # Button A (index 0): ニュートラル
+            #     if msg.buttons[0]:
+            #         self.set_steering_angle(0)
+            #         self.set_motor_speed(0)
+            #         self.get_logger().info('Reset to neutral')
                 
-                # Button B (index 1): 緊急停止
-                if msg.buttons[1]:
-                    self.set_motor_speed(0)
-                    self.get_logger().warn('Emergency stop')
-                
-                # Button X (index 2): 速度制限を上げる
-                if len(msg.buttons) > 2 and msg.buttons[2]:
-                    self.max_speed_limit = min(1.0, self.max_speed_limit + 0.1)
-                    self.get_logger().info(f'Speed limit: {self.max_speed_limit:.1%}')
-                
-                # Button Y (index 3): 速度制限を下げる
-                if len(msg.buttons) > 3 and msg.buttons[3]:
-                    self.max_speed_limit = max(0.1, self.max_speed_limit - 0.1)
-                    self.get_logger().info(f'Speed limit: {self.max_speed_limit:.1%}')
+            #     # Button B (index 1): 緊急停止
+            #     if msg.buttons[1]:
+            #         self.set_motor_speed(0)
+            #         self.get_logger().warn('Emergency stop')
         
         except Exception as e:
             self.get_logger().error(f'Error in joy_callback: {e}')
+    
+    def joy_limit_callback(self, msg):
+        """速度制限調整用のJoyメッセージのコールバック"""
+        try:
+            # 十字キーの値を取得（axes[7]: 上下）
+            # 上: +1.0, 下: -1.0, ニュートラル: 0.0
+            if len(msg.axes) > 7:
+                dpad_vertical = msg.axes[7]
+                
+                # 十字キー上: 速度制限を上げる（立ち上がりエッジ検出）
+                if dpad_vertical > 0.5 and self.prev_dpad_up == 0:
+                    self.max_speed_limit = min(1.0, self.max_speed_limit + 0.1)
+                    self.get_logger().info(f'Speed limit increased: {self.max_speed_limit:.1%}')
+                
+                # 十字キー下: 速度制限を下げる（立ち下がりエッジ検出）
+                if dpad_vertical < -0.5 and self.prev_dpad_down == 0:
+                    self.max_speed_limit = max(0.1, self.max_speed_limit - 0.1)
+                    self.get_logger().info(f'Speed limit decreased: {self.max_speed_limit:.1%}')
+                
+                # 前回の状態を更新
+                self.prev_dpad_up = 1 if dpad_vertical > 0.5 else 0
+                self.prev_dpad_down = 1 if dpad_vertical < -0.5 else 0
+        
+        except Exception as e:
+            self.get_logger().error(f'Error in joy_limit_callback: {e}')
     
     def status_callback(self):
         """定期的な状態表示"""
