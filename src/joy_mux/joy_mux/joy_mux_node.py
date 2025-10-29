@@ -3,6 +3,8 @@
 import rclpy
 from rclpy.node import Node
 from sensor_msgs.msg import Joy
+from std_msgs.msg import String
+import json
 
 
 class JoyMuxNode(Node):
@@ -23,8 +25,9 @@ class JoyMuxNode(Node):
             10
         )
         
-        # Publisher
+        # Publishers
         self.mux_joy_pub = self.create_publisher(Joy, '/mux_joy', 10)
+        self.status_pub = self.create_publisher(String, '/mux_joy/status', 10)
         
         # State variables
         self.manual_mode = True  # False: torch_joy (自動), True: joy (手動)
@@ -37,10 +40,23 @@ class JoyMuxNode(Node):
         # PlayStation button index (通常は12番, 環境により異なる場合あり)
         self.ps_button_index = 12
         # L2 button index (通常は8番, 環境により異なる場合あり)
-        self.l2_button_index = 8
+        self.l2_button_index = 6
         
         self.get_logger().info('Joy Mux Node started. Press PlayStation button to toggle modes.')
         self.get_logger().info('Current mode: AUTO (torch_joy), fallback to joy if torch_joy unavailable')
+        
+        # 初期ステータスをパブリッシュ
+        self.publish_status()
+    
+    def publish_status(self):
+        """現在のモードステータスをJSON形式でパブリッシュ"""
+        status_msg = String()
+        status_dict = {
+            'mode': 'Manual' if self.manual_mode else 'Auto',
+            'source': 'joy' if self.manual_mode else 'torch_joy'
+        }
+        status_msg.data = json.dumps(status_dict)
+        self.status_pub.publish(status_msg)
     
     def joy_callback(self, msg):
         """手動操作用のジョイスティックからのコールバック"""
@@ -55,6 +71,9 @@ class JoyMuxNode(Node):
                 self.manual_mode = not self.manual_mode
                 mode_str = "MANUAL (joy)" if self.manual_mode else "AUTO (torch_joy)"
                 self.get_logger().info(f'Mode switched to: {mode_str}')
+                
+                # モード切り替え時にステータスをパブリッシュ
+                self.publish_status()
             
             self.last_ps_button_state = current_ps_state
         
