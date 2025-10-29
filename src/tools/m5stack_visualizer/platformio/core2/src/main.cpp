@@ -1,4 +1,4 @@
-#include <M5Stack.h>
+#include <M5Core2.h>
 #include <ArduinoJson.h>
 
 // 表示モード
@@ -37,9 +37,10 @@ BagRecorderEvent last_event;
 MuxInputStatus mux_status;
 MuxInputStatus prev_mux_status;
 unsigned long last_receive_time = 0;
-unsigned long bag_last_update = 0;
-unsigned long mux_last_update = 0;
+unsigned long bag_last_update = 0;     // Bag Recorderの最終更新時刻
+unsigned long mux_last_update = 0;     // Mux Inputの最終更新時刻
 const unsigned long TIMEOUT_MS = 5000;
+const unsigned long DATA_TIMEOUT_MS = 3000;  // 3秒でタイムアウト
 bool blink_state = false;
 unsigned long last_blink = 0;
 bool data_received = false;
@@ -76,9 +77,9 @@ bool isMuxTimeout();
 
 void setup() {
     M5.begin();
-    M5.Power.begin();
     Serial.begin(115200);
     
+    // 省電力のため初期画面はシンプルに
     drawInitialScreen();
 }
 
@@ -93,9 +94,11 @@ void loop() {
         if (line.startsWith("{")) {
             last_receive_time = millis();
             
+            // 前回の状態を保存
             prev_bag_status = bag_status;
             prev_mux_status = mux_status;
             
+            // メッセージタイプを判定
             if (line.indexOf("\"state\"") != -1) {
                 parseStatusMessage(line);
                 bag_last_update = millis();
@@ -108,6 +111,7 @@ void loop() {
                 mux_data_received = true;
             }
             
+            // データ受信フラグを立てる
             if (!data_received) {
                 data_received = true;
                 updateDisplay();
@@ -117,7 +121,28 @@ void loop() {
         }
     }
     
+    // ボタン処理
     handleButtonPress();
+    
+    // タイムアウトチェックと画面更新
+    static unsigned long last_timeout_check = 0;
+    if (millis() - last_timeout_check > 1000) {  // 1秒ごとにチェック
+        last_timeout_check = millis();
+        if (data_received) {
+            bool was_bag_timeout = isBagTimeout();
+            bool was_mux_timeout = isMuxTimeout();
+            
+            // タイムアウト状態が変化したら更新
+            static bool prev_bag_timeout = false;
+            static bool prev_mux_timeout = false;
+            
+            if (was_bag_timeout != prev_bag_timeout || was_mux_timeout != prev_mux_timeout) {
+                updateDisplay();
+                prev_bag_timeout = was_bag_timeout;
+                prev_mux_timeout = was_mux_timeout;
+            }
+        }
+    }
     
     // 点滅処理（RECORDING時のみ）
     if (bag_status.state == "RECORDING" && current_mode == MODE_BAG_ONLY && 
@@ -142,22 +167,26 @@ void loop() {
 }
 
 bool isBagTimeout() {
+    // RECORDERは初回データ受信前のみ待機表示
     return !bag_data_received;
 }
 
 bool isMuxTimeout() {
-    return !mux_data_received;
+    return mux_data_received && (millis() - mux_last_update > DATA_TIMEOUT_MS);
 }
 
 void drawStandbyArea(int x, int y, int w, int h, String title) {
+    // 待機モード表示用の共通関数
     M5.Lcd.drawRect(x, y, w, h, TFT_DARKGREY);
     M5.Lcd.setTextColor(TFT_DARKGREY);
     M5.Lcd.setTextSize(2);
     
+    // タイトル表示（中央寄せ）
     int title_x = x + (w - title.length() * 12) / 2;
     M5.Lcd.setCursor(title_x, y + 5);
     M5.Lcd.println(title);
     
+    // 中央に「---」
     M5.Lcd.setTextSize(1);
     M5.Lcd.setCursor(x + w/2 - 10, y + h/2 - 5);
     M5.Lcd.println("---");
@@ -166,21 +195,26 @@ void drawStandbyArea(int x, int y, int w, int h, String title) {
 void drawInitialScreen() {
     M5.Lcd.fillScreen(COLOR_BG);
     
+    // 現在のモードに応じた待機画面を表示
     switch (current_mode) {
         case MODE_MUX_ONLY:
+            // DRIVE待機画面
             drawStandbyArea(10, 10, 300, 195, "DRIVE");
             break;
             
         case MODE_BAG_AND_MUX:
+            // 両方の待機画面
             drawStandbyArea(10, 10, 300, 95, "RECORDER");
             drawStandbyArea(10, 110, 300, 95, "DRIVE");
             break;
             
         case MODE_BAG_ONLY:
+            // RECORDER待機画面
             drawStandbyArea(10, 10, 300, 195, "RECORDER");
             break;
     }
     
+    // ボタンインジケーター
     M5.Lcd.fillRect(0, 215, 320, 25, TFT_DARKGREY);
     M5.Lcd.setTextSize(1);
     M5.Lcd.setTextColor(TFT_WHITE);
@@ -193,16 +227,19 @@ void drawInitialScreen() {
 }
 
 bool hasDataChanged() {
+    // Bag Recorderの状態変化をチェック
     if (bag_status.state != prev_bag_status.state ||
         bag_status.system_unlocked != prev_bag_status.system_unlocked ||
         bag_status.bag_counter != prev_bag_status.bag_counter) {
         return true;
     }
     
+    // Mux Inputの状態変化をチェック
     if (mux_status.mode != prev_mux_status.mode) {
         return true;
     }
     
+    // モード変化をチェック
     if (current_mode != prev_mode) {
         prev_mode = current_mode;
         return true;
@@ -246,6 +283,7 @@ void parseMuxMessage(String json_str) {
 }
 
 void handleButtonPress() {
+    // タッチボタン（BtnA, BtnB, BtnC）の処理
     if (M5.BtnA.wasPressed()) {
         current_mode = (DisplayMode)((current_mode + 1) % 3);
         if (!data_received) {
@@ -256,6 +294,7 @@ void handleButtonPress() {
     }
     
     if (M5.BtnB.wasPressed()) {
+        // Refreshで待機画面に戻る
         data_received = false;
         bag_data_received = false;
         mux_data_received = false;
@@ -304,29 +343,36 @@ void drawModeIndicator() {
 }
 
 void drawBagRecorderLarge() {
+    // タイムアウトチェック
     if (isBagTimeout()) {
+        // 待機画面表示
         drawStandbyArea(10, 10, 300, 195, "RECORDER");
         return;
     }
     
     if (bag_status.state == "RECORDING") {
+        // RECORDING時: 全画面赤背景
         M5.Lcd.fillRect(0, 0, 320, 215, COLOR_RECORDING);
         
+        // 点滅する●マーク
         if (blink_state) {
             M5.Lcd.fillCircle(40, 60, 20, TFT_WHITE);
         }
         
+        // 超大きく「REC」
         M5.Lcd.setTextSize(6);
         M5.Lcd.setTextColor(TFT_WHITE);
         M5.Lcd.setCursor(90, 40);
         M5.Lcd.println("REC");
         
+        // Bagカウンター（大きめ）
         M5.Lcd.setTextSize(4);
         M5.Lcd.setCursor(80, 120);
         M5.Lcd.print("Bag #");
         M5.Lcd.println(bag_status.bag_counter);
         
     } else {
+        // IDLE時: ステータスバー方式
         uint16_t status_color = getStateColor(bag_status.state);
         M5.Lcd.fillRect(0, 0, 320, 60, status_color);
         
@@ -372,15 +418,18 @@ void drawBagAndMux() {
     bool bag_timeout = isBagTimeout();
     bool mux_timeout = isMuxTimeout();
     
+    // パターン1: 両方待機
     if (bag_timeout && mux_timeout) {
         drawStandbyArea(10, 10, 300, 95, "RECORDER");
         drawStandbyArea(10, 110, 300, 95, "DRIVE");
         return;
     }
     
+    // パターン2: RECORDER待機、DRIVE表示
     if (bag_timeout && !mux_timeout) {
         drawStandbyArea(10, 10, 300, 95, "RECORDER");
         
+        // DRIVE表示
         uint16_t mux_color = getMuxColor(mux_status.mode);
         M5.Lcd.fillRect(0, 108, 320, 107, mux_color);
         M5.Lcd.setTextSize(2);
@@ -398,7 +447,9 @@ void drawBagAndMux() {
         return;
     }
     
+    // パターン3: RECORDER表示、DRIVE待機
     if (!bag_timeout && mux_timeout) {
+        // RECORDER表示
         uint16_t bag_color = getStateColor(bag_status.state);
         M5.Lcd.fillRect(0, 0, 320, 107, bag_color);
         M5.Lcd.setTextSize(2);
@@ -424,6 +475,7 @@ void drawBagAndMux() {
         return;
     }
     
+    // パターン4: 両方表示
     uint16_t bag_color = getStateColor(bag_status.state);
     M5.Lcd.fillRect(0, 0, 320, 107, bag_color);
     M5.Lcd.setTextSize(2);
@@ -462,7 +514,9 @@ void drawBagAndMux() {
 }
 
 void drawMuxOnlyLarge() {
+    // タイムアウトチェック
     if (isMuxTimeout()) {
+        // 待機画面表示
         drawStandbyArea(10, 10, 300, 195, "DRIVE");
         return;
     }
