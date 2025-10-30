@@ -33,11 +33,11 @@ def generate_launch_description():
             output='screen'
         ),
         
-        # joy_controller_nodeを起動
+        # pwm_controller_nodeを起動
         Node(
-            package='pytorch_joy_controller',
-            executable='joy_controller_node',
-            name='joy_controller_node',
+            package='pytorch_pwm_controller',
+            executable='nn_pwm_controller_node',
+            name='nn_pwm_controller_node',
             output='screen'
         ),
         
