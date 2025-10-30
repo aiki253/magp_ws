@@ -20,6 +20,8 @@ class PwmController(Node):
         self.declare_parameter('motor_min', 1100)
         self.declare_parameter('motor_max', 2300)
         self.declare_parameter('motor_neutral', 1620)
+        self.declare_parameter('initial_motor_min', 1500)
+        self.declare_parameter('initial_motor_max', 1900)
         self.declare_parameter('steering_center', 1500)
         self.declare_parameter('steering_left', 1200)
         self.declare_parameter('steering_right', 1800)
@@ -32,9 +34,11 @@ class PwmController(Node):
         self.motor_channel = self.get_parameter('motor_channel').value
         self.steering_channel = self.get_parameter('steering_channel').value
         i2c_addr = self.get_parameter('i2c_address').value
-        self.MOTOR_MIN = self.get_parameter('motor_min').value
-        self.MOTOR_MAX = self.get_parameter('motor_max').value
+        self.MOTOR_MIN_ABSOLUTE = self.get_parameter('motor_min').value
+        self.MOTOR_MAX_ABSOLUTE = self.get_parameter('motor_max').value
         self.MOTOR_NEUTRAL = self.get_parameter('motor_neutral').value
+        initial_motor_min = self.get_parameter('initial_motor_min').value
+        initial_motor_max = self.get_parameter('initial_motor_max').value
         self.STEERING_CENTER = self.get_parameter('steering_center').value
         self.STEERING_LEFT = self.get_parameter('steering_left').value
         self.STEERING_RIGHT = self.get_parameter('steering_right').value
@@ -53,7 +57,10 @@ class PwmController(Node):
             raise
         
         # State variables
-        self.speed_scale_offset = 0
+        # 動的な上限・下限（パラメータから初期化）
+        self.current_motor_min = initial_motor_min
+        self.current_motor_max = initial_motor_max
+        
         self.emergency_stop_active = False
         self.current_motor_pwm = self.MOTOR_NEUTRAL
         self.current_steering_pwm = self.STEERING_CENTER
@@ -70,21 +77,17 @@ class PwmController(Node):
             self.mux_pwm_callback,
             10
         )
-        self.joy_limit_sub = self.create_subscription(
+        self.joy_sub = self.create_subscription(
             Joy,
             '/joy',
-            self.joy_limit_callback,
-            10
-        )
-        self.joy_emergency_sub = self.create_subscription(
-            Joy,
-            '/joy',
-            self.joy_emergency_callback,
+            self.joy_callback,
             10
         )
         
         # Publisher
         self.pwm_input_pub = self.create_publisher(TwistStamped, '/pwm_input', 10)
+        
+        self.get_logger().info(f'初期PWM範囲: {self.current_motor_min} ~ {self.current_motor_max}')
     
     def _initialize_esc(self):
         """ESCを正しく初期化"""
@@ -114,26 +117,30 @@ class PwmController(Node):
         duty_cycle = self._us_to_duty_cycle(pwm_value)
         self.pca.channels[self.steering_channel].duty_cycle = duty_cycle
     
-    def apply_speed_scale(self, input_motor_pwm):
+    def apply_dynamic_range(self, input_motor_pwm):
         """
-        入力されたモーターPWM値にスケールオフセットを適用
+        入力PWM値を現在の動的範囲内にクリッピング
+        
+        緊急停止時は範囲がMOTOR_NEUTRALのみに制限される
         
         Args:
             input_motor_pwm: 入力PWM値（μs）
         Returns:
-            scaled_motor_pwm: スケール適用後のPWM値（μs）
+            clipped_motor_pwm: クリッピング後のPWM値（μs）
         """
-        # ニュートラルからの差分を計算
-        offset_from_neutral = input_motor_pwm - self.MOTOR_NEUTRAL
+        # 緊急停止時は範囲をニュートラルのみに制限
+        if self.emergency_stop_active:
+            effective_min = self.MOTOR_NEUTRAL
+            effective_max = self.MOTOR_NEUTRAL
+        else:
+            effective_min = self.current_motor_min
+            effective_max = self.current_motor_max
         
-        # スケールオフセットを加算
-        scaled_offset = offset_from_neutral + self.speed_scale_offset
+        # 有効範囲内にクリッピング
+        clipped_pwm = max(effective_min, min(effective_max, input_motor_pwm))
         
-        # ニュートラルに戻す
-        scaled_motor_pwm = self.MOTOR_NEUTRAL + scaled_offset
-        
-        # 範囲制限
-        return max(self.MOTOR_MIN, min(self.MOTOR_MAX, scaled_motor_pwm))
+        # 絶対的な範囲制限
+        return max(self.MOTOR_MIN_ABSOLUTE, min(self.MOTOR_MAX_ABSOLUTE, clipped_pwm))
     
     def check_emergency_stop(self, joy_msg):
         """
@@ -148,22 +155,36 @@ class PwmController(Node):
             return l1_pressed and r1_pressed
         return False
     
-    def joy_emergency_callback(self, msg):
-        """緊急停止監視用のJoyコールバック"""
+    def joy_callback(self, msg):
+        """Joyコールバック（緊急停止と速度範囲調整の両方を処理）"""
+        # 緊急停止チェック
         self.emergency_stop_active = self.check_emergency_stop(msg)
-    
-    def joy_limit_callback(self, msg):
-        """十字キーによる速度スケール調整"""
+        
+        # 緊急停止中は範囲調整を無効化
+        if self.emergency_stop_active:
+            return
+        
+        # 十字キーによる速度範囲調整
         if len(msg.axes) > self.dpad_vertical_axis:
             dpad_vertical = msg.axes[self.dpad_vertical_axis]
             
-            # 十字キー上: スケールを増やす
+            # 十字キー上: 上限のみを増やす（範囲を拡大）
             if dpad_vertical > 0.5 and self.prev_dpad_up == 0:
-                self.speed_scale_offset += self.speed_scale_step
+                new_max = self.current_motor_max + self.speed_scale_step
+                
+                # 絶対上限を超えないようにチェック
+                if new_max <= self.MOTOR_MAX_ABSOLUTE:
+                    self.current_motor_max = new_max
+                    self.get_logger().info(f'PWM範囲を拡大: {self.current_motor_min} ~ {self.current_motor_max}')
             
-            # 十字キー下: スケールを減らす
+            # 十字キー下: 下限のみを減らす（範囲を拡大）
             if dpad_vertical < -0.5 and self.prev_dpad_down == 0:
-                self.speed_scale_offset -= self.speed_scale_step
+                new_min = self.current_motor_min - self.speed_scale_step
+                
+                # 絶対下限を下回らないようにチェック
+                if new_min >= self.MOTOR_MIN_ABSOLUTE:
+                    self.current_motor_min = new_min
+                    self.get_logger().info(f'PWM範囲を拡大: {self.current_motor_min} ~ {self.current_motor_max}')
             
             # 前回の状態を更新
             self.prev_dpad_up = 1 if dpad_vertical > 0.5 else 0
@@ -175,17 +196,16 @@ class PwmController(Node):
         output_msg.header.stamp = self.get_clock().now().to_msg()
         output_msg.header.frame_id = "base_link"
         
+        # 動的範囲適用（緊急停止時は自動的にニュートラルに制限される）
+        scaled_motor = self.apply_dynamic_range(msg.twist.linear.x)
+        
+        # 範囲チェック（二重チェック）
+        output_msg.twist.linear.x = float(max(self.MOTOR_MIN_ABSOLUTE, min(self.MOTOR_MAX_ABSOLUTE, scaled_motor)))
+        output_msg.twist.angular.z = float(max(self.STEERING_LEFT, min(self.STEERING_RIGHT, msg.twist.angular.z)))
+        
+        # 緊急停止時はステアリングも中央に固定
         if self.emergency_stop_active:
-            # 緊急停止中: ニュートラル/中央に固定
-            output_msg.twist.linear.x = float(self.MOTOR_NEUTRAL)
             output_msg.twist.angular.z = float(self.STEERING_CENTER)
-        else:
-            # 通常動作: スケール適用
-            scaled_motor = self.apply_speed_scale(msg.twist.linear.x)
-            
-            # 範囲チェック（二重チェック）
-            output_msg.twist.linear.x = float(max(self.MOTOR_MIN, min(self.MOTOR_MAX, scaled_motor)))
-            output_msg.twist.angular.z = float(max(self.STEERING_LEFT, min(self.STEERING_RIGHT, msg.twist.angular.z)))
         
         # 現在の値を保存
         self.current_motor_pwm = output_msg.twist.linear.x

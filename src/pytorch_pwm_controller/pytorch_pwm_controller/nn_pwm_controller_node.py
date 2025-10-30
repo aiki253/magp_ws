@@ -14,7 +14,6 @@ class NNControllerNode(Node):
     def __init__(self):
         super().__init__('nn_controller_node')
         self.start_time = time.time()
-        self.throttle_scale_factor = 1.1  # NNの出力をスケーリングする係数
         
         # scan_rangesのシーケンスを保持するリスト
         self.scan_sequence = []
@@ -132,12 +131,12 @@ class NNControllerNode(Node):
             pwm_msg.header.stamp = self.get_clock().now().to_msg()
             pwm_msg.header.frame_id = "base_link"
             
-            # throttleのスケーリング（必要に応じて調整）
-            pwm_msg.twist.linear.x = float(throttle * self.throttle_scale_factor)
+            # throttle
+            pwm_msg.twist.linear.x = float(throttle)
             pwm_msg.twist.linear.y = 0.0
             pwm_msg.twist.linear.z = 0.0
             
-            # angleをそのまま角速度として使用
+            # angle
             pwm_msg.twist.angular.x = 0.0
             pwm_msg.twist.angular.y = 0.0
             pwm_msg.twist.angular.z = float(angle)
