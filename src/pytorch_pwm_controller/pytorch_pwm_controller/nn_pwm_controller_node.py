@@ -97,9 +97,10 @@ class NNControllerNode(Node):
                 return
             
             # 必要な数を超えたら古いものを削除
-            while len(self.scan_sequence) > required_length:
-                self.scan_sequence.pop(0)
-                self.action_sequence.pop(0)
+            if len(self.scan_sequence) > required_length:
+                self.scan_sequence = self.scan_sequence[-(required_length):]
+                self.action_sequence = self.action_sequence[-(required_length):]
+
             
             # strideを考慮してデータを取得
             scan_indices = [i * self.history_stride for i in range(self.sequence_length)]
