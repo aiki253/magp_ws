@@ -1,9 +1,9 @@
 <?xml version="1.0"?>
 <?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
 <package format="3">
-  <name>pytorch_joy_controller</name>
+  <name>pytorch_pwm_controller</name>
   <version>0.0.1</version>
-  <description>PyTorch-based joy controller using laser scan data</description>
+  <description>PyTorch-based pwm controller using laser scan data</description>
   <maintainer email="your_email@example.com">Your Name</maintainer>
   <license>MIT</license>
 

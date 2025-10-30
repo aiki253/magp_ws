@@ -10,10 +10,11 @@ import time
 from .model.model import Model
 
 
-class JoyControllerNode(Node):
+class NNControllerNode(Node):
     def __init__(self):
-        super().__init__('joy_controller_node')
+        super().__init__('nn_controller_node')
         self.start_time = time.time()
+        self.throttle_scale_factor = 1.1  # NNの出力をスケーリングする係数
         
         # scan_rangesのシーケンスを保持するリスト
         self.scan_sequence = []
@@ -28,7 +29,7 @@ class JoyControllerNode(Node):
         # パラメータの宣言
         self.declare_parameter('model_path', '')
         self.declare_parameter('scan_topic', '/scan')
-        self.declare_parameter('cmd_vel_topic', '/cmd_vel')
+        self.declare_parameter('pwm_topic', '/torch_pwm')
         self.declare_parameter('prediction_steps', 1)
         self.declare_parameter('history_stride', 1)
         
@@ -43,7 +44,7 @@ class JoyControllerNode(Node):
             model_path = os.path.join(package_share_dir, 'model', 'model.pth')
         
         scan_topic = self.get_parameter('scan_topic').get_parameter_value().string_value
-        cmd_vel_topic = self.get_parameter('cmd_vel_topic').get_parameter_value().string_value
+        pwm_topic = self.get_parameter('pwm_topic').get_parameter_value().string_value
         
         self.get_logger().info(f'Loading model from: {model_path}')
         self.get_logger().info(f'Prediction steps: {prediction_steps}')
@@ -65,11 +66,11 @@ class JoyControllerNode(Node):
             10
         )
         
-        # Publisher
-        self.cmd_vel_pub = self.create_publisher(TwistStamped, cmd_vel_topic, 10)
+        # Publisher (TwistStamped for PWM commands)
+        self.pwm_pub = self.create_publisher(TwistStamped, pwm_topic, 10)
         
         self.get_logger().info(f'Subscribing to: {scan_topic}')
-        self.get_logger().info(f'Publishing to: {cmd_vel_topic}')
+        self.get_logger().info(f'Publishing to: {pwm_topic}')
     
     def scan_callback(self, msg: LaserScan):
         try:
@@ -123,23 +124,22 @@ class JoyControllerNode(Node):
             self.last_angle = angle
             
             # TwistStampedメッセージの作成
-            twist_msg = TwistStamped()
-            twist_msg.header.stamp = self.get_clock().now().to_msg()
-            twist_msg.header.frame_id = "base_link"
+            pwm_msg = TwistStamped()
+            pwm_msg.header.stamp = self.get_clock().now().to_msg()
+            pwm_msg.header.frame_id = "base_link"
             
-            # throttleを線速度、angleを角速度に変換
             # throttleのスケーリング（必要に応じて調整）
-            twist_msg.twist.linear.x = float(throttle * 4.0)
-            twist_msg.twist.linear.y = 0.0
-            twist_msg.twist.linear.z = 0.0
+            pwm_msg.twist.linear.x = float(throttle * self.throttle_scale_factor)
+            pwm_msg.twist.linear.y = 0.0
+            pwm_msg.twist.linear.z = 0.0
             
             # angleをそのまま角速度として使用
-            twist_msg.twist.angular.x = 0.0
-            twist_msg.twist.angular.y = 0.0
-            twist_msg.twist.angular.z = float(angle)
+            pwm_msg.twist.angular.x = 0.0
+            pwm_msg.twist.angular.y = 0.0
+            pwm_msg.twist.angular.z = float(angle)
             
             # パブリッシュ
-            self.cmd_vel_pub.publish(twist_msg)
+            self.cmd_vel_pub.publish(pwm_msg)
             
         except Exception as e:
             self.get_logger().error(f'Error in scan_callback: {str(e)}')
