@@ -135,18 +135,8 @@ if __name__ == "__main__":
     dummy_input = np.random.rand(4, 1081).astype(np.float32)
     
     # 元のモデルファイルの場合（prediction_steps=1がデフォルト）
-    model_single = Model("../model/model.pth", prediction_steps=1)
+    model_single = Model("./model/model.pth", prediction_steps=1)
     output = model_single.inference(dummy_input)
     print(f"Output shape: {np.array(output).shape}")
     print(f"Output: {output}")
-
-    # 使用例2: 5ステップ予測
-    print("\n=== Multi-step prediction (5 steps) ===")
-    model_multi = Model("../model/model_5steps.pth", prediction_steps=5)
-    output = model_multi.inference(dummy_input)
-    print(f"Output shape: {np.array(output).shape}")
-    print(f"Output: {output}")
     
-    # 次のステップのみ取得
-    next_step = model_multi.inference_next_step_only(dummy_input)
-    print(f"\nNext step only: {next_step}")
