@@ -30,8 +30,8 @@ class NNControllerNode(Node):
         self.declare_parameter('model_path', '')
         self.declare_parameter('scan_topic', '/scan')
         self.declare_parameter('pwm_topic', '/torch_pwm')
-        self.declare_parameter('prediction_steps', 1)
-        self.declare_parameter('history_stride', 1)
+        self.declare_parameter('prediction_steps', 40)
+        self.declare_parameter('history_stride', 30)
         
         # パラメータの取得
         model_path = self.get_parameter('model_path').get_parameter_value().string_value
