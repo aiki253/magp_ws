@@ -40,7 +40,7 @@ class NNControllerNode(Node):
         
         # モデルパスが指定されていない場合はデフォルトパスを使用
         if not model_path:
-            package_share_dir = get_package_share_directory('pytorch_joy_controller')
+            package_share_dir = get_package_share_directory('pytorch_pwm_controller')
             model_path = os.path.join(package_share_dir, 'model', 'model.pth')
         
         scan_topic = self.get_parameter('scan_topic').get_parameter_value().string_value
@@ -148,7 +148,7 @@ class NNControllerNode(Node):
 def main(args=None):
     rclpy.init(args=args)
     try:
-        node = JoyControllerNode()
+        node = NNControllerNode()
         rclpy.spin(node)
     except KeyboardInterrupt:
         pass

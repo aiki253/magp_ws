@@ -20,7 +20,7 @@ setup(
     tests_require=['pytest'],
     entry_points={
         'console_scripts': [
-            'pwm_mux_node = pwm_mux.joy_mux_node:main',
+            'pwm_mux_node = mux_pwm.pwm_mux_node:main',
         ],
     },
 )
