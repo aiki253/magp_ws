@@ -89,6 +89,8 @@ class NNControllerNode(Node):
             # 必要なデータ数を計算（strideを考慮）
             required_length = (self.sequence_length - 1) * self.history_stride + 1
             
+            # self.get_logger().info(f'{len(self.scan_sequence)}, {required_length}')
+            
             # 必要な数が溜まるまで待つ
             if len(self.scan_sequence) < required_length:
                 self.get_logger().info(
@@ -97,10 +99,9 @@ class NNControllerNode(Node):
                 return
             
             # 必要な数を超えたら古いものを削除
-            if len(self.scan_sequence) > required_length:
-                self.scan_sequence = self.scan_sequence[-(required_length):]
-                self.action_sequence = self.action_sequence[-(required_length):]
-
+            while len(self.scan_sequence) > required_length:
+                self.scan_sequence.pop(0)
+                self.action_sequence.pop(0)
             
             # strideを考慮してデータを取得
             scan_indices = [i * self.history_stride for i in range(self.sequence_length)]
@@ -115,6 +116,8 @@ class NNControllerNode(Node):
             prediction = self.model.inference_next_step_only(
                 inference_scan, inference_action
             )
+
+            # self.get_logger().info(f'DNN output is {prediction[0]}, {prediction[1]}')
             
             # 予測結果を取得 [throttle, angle]
             throttle = prediction[0]

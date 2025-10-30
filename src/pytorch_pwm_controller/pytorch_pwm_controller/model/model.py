@@ -161,12 +161,12 @@ class Model:
             return predictions[0]
 
 
-if __name__ == "__main__":
-    # 使用例
-    print("=== Inference example ===")
-    dummy_scan = np.random.rand(4, 1081).astype(np.float32)
-    dummy_action = np.random.rand(4, 2).astype(np.float32)
+# if __name__ == "__main__":
+#     # 使用例
+#     print("=== Inference example ===")
+#     dummy_scan = np.random.rand(4, 1081).astype(np.float32)
+#     dummy_action = np.random.rand(4, 2).astype(np.float32)
 
-    model = Model("../model/model.pth", prediction_steps=1)
-    output = model.inference(dummy_scan, dummy_action)
-    print(f"Output: {output}")
+#     model = Model("./model/model.pth", prediction_steps=1)
+#     output = model.inference(dummy_scan, dummy_action)
+#     print(f"Output: {output}")
