@@ -6,14 +6,16 @@ import numpy as np
 from ament_index_python.packages import get_package_share_directory
 import os
 import time
-
-from .model_inference import Model
-
+from .model.model import Model
 
 class JoyControllerNode(Node):
     def __init__(self):
         super().__init__('joy_controller_node')
         self.start_time = time.time()
+        
+        # scan_rangesのシーケンスを保持するリスト（最大4つ）
+        self.scan_sequence = []
+        self.sequence_length = 4
         
         # パラメータの宣言
         self.declare_parameter('model_path', '')
@@ -35,7 +37,7 @@ class JoyControllerNode(Node):
         
         # モデルの初期化
         try:
-            self.model = Model(model_path)
+            self.model = Model(model_path, prediction_steps=40)
             self.get_logger().info('Model loaded successfully')
         except Exception as e:
             self.get_logger().error(f'Failed to load model: {str(e)}')
@@ -57,13 +59,6 @@ class JoyControllerNode(Node):
     
     def scan_callback(self, msg: LaserScan):
         try:
-            # inference_time = time.time() - self.start_time
-            # # total calcurate time 結果をログ出力
-            # self.get_logger().info(f'推論時間: {inference_time*1000:.2f} ms')
-
-            # # 1 callback の時間計測
-            # self.start_time = time.time()
-
             # LaserScanデータをNumPy配列に変換
             scan_ranges = np.array(msg.ranges, dtype=np.float32)
             
@@ -71,18 +66,33 @@ class JoyControllerNode(Node):
             scan_ranges = np.where(np.isinf(scan_ranges), msg.range_max, scan_ranges)
             scan_ranges = np.where(np.isnan(scan_ranges), 0.0, scan_ranges)
             
+            # シーケンスにscan_rangesを追加
+            self.scan_sequence.append(scan_ranges)
+            
+            # 4つ溜まるまで待つ
+            if len(self.scan_sequence) < self.sequence_length:
+                self.get_logger().info(f'Collecting data... ({len(self.scan_sequence)}/{self.sequence_length})')
+                return
+            
+            # 4つを超えたら古いものを削除
+            if len(self.scan_sequence) > self.sequence_length:
+                self.scan_sequence.pop(0)
+            
+            # 4つのscan_rangesを結合して推論の入力を作成
+            # (4, scan_size) の形状にして、チャネル次元として扱う
+            inference_input = np.stack(self.scan_sequence, axis=0)  # shape: (4, scan_size)
+            
             # 推論実行
-            joy_axes = self.model.inference(scan_ranges)
-            # print(joy_axes)
+            joy_axes = self.model.inference_next_step_only(inference_input)
             
             # Joyメッセージの作成
             joy_msg = Joy()
             joy_msg.header.stamp = self.get_clock().now().to_msg()
             joy_msg.header.frame_id = "joy"
+            
             joy_axes[0] = max(min(joy_axes[0] * 4.0, 0.99), -0.99)
-            # joy_msg.axes = [0.0, 0.7, joy_axes[1]]
             joy_msg.axes = [0.0, joy_axes[0], joy_axes[1]]
-            joy_msg.buttons = []  # 必要に応じてボタンも追加可能
+            joy_msg.buttons = []
             
             # パブリッシュ
             self.joy_pub.publish(joy_msg)
@@ -90,10 +100,8 @@ class JoyControllerNode(Node):
         except Exception as e:
             self.get_logger().error(f'Error in scan_callback: {str(e)}')
 
-
 def main(args=None):
     rclpy.init(args=args)
-    
     try:
         node = JoyControllerNode()
         rclpy.spin(node)
@@ -104,7 +112,6 @@ def main(args=None):
     finally:
         if rclpy.ok():
             rclpy.shutdown()
-
 
 if __name__ == '__main__':
     main()

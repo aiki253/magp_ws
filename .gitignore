@@ -1,4 +1,17 @@
+# ROS system file
 log
 install
 build
+
+# ROS bag file
 rosbag
+
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyc
+*.pyo
+
+# Mac OS files
+.DS_Store
