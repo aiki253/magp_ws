@@ -1,29 +1,41 @@
 #!/usr/bin/env python3
 import rclpy
 from rclpy.node import Node
-from sensor_msgs.msg import LaserScan, Joy
+from sensor_msgs.msg import LaserScan
+from geometry_msgs.msg import TwistStamped
 import numpy as np
 from ament_index_python.packages import get_package_share_directory
 import os
 import time
 from .model.model import Model
 
+
 class JoyControllerNode(Node):
     def __init__(self):
         super().__init__('joy_controller_node')
         self.start_time = time.time()
         
-        # scan_rangesのシーケンスを保持するリスト（最大4つ）
+        # scan_rangesのシーケンスを保持するリスト
         self.scan_sequence = []
+        # アクション履歴を保持するリスト [[throttle, angle], ...]
+        self.action_sequence = []
         self.sequence_length = 4
+        
+        # 前回のアクション（初期値）
+        self.last_throttle = 0.0
+        self.last_angle = 0.0
         
         # パラメータの宣言
         self.declare_parameter('model_path', '')
         self.declare_parameter('scan_topic', '/scan')
-        self.declare_parameter('joy_topic', '/torch_joy')
+        self.declare_parameter('cmd_vel_topic', '/cmd_vel')
+        self.declare_parameter('prediction_steps', 1)
+        self.declare_parameter('history_stride', 1)
         
         # パラメータの取得
         model_path = self.get_parameter('model_path').get_parameter_value().string_value
+        prediction_steps = self.get_parameter('prediction_steps').get_parameter_value().integer_value
+        self.history_stride = self.get_parameter('history_stride').get_parameter_value().integer_value
         
         # モデルパスが指定されていない場合はデフォルトパスを使用
         if not model_path:
@@ -31,13 +43,15 @@ class JoyControllerNode(Node):
             model_path = os.path.join(package_share_dir, 'model', 'model.pth')
         
         scan_topic = self.get_parameter('scan_topic').get_parameter_value().string_value
-        joy_topic = self.get_parameter('joy_topic').get_parameter_value().string_value
+        cmd_vel_topic = self.get_parameter('cmd_vel_topic').get_parameter_value().string_value
         
         self.get_logger().info(f'Loading model from: {model_path}')
+        self.get_logger().info(f'Prediction steps: {prediction_steps}')
+        self.get_logger().info(f'History stride: {self.history_stride}')
         
         # モデルの初期化
         try:
-            self.model = Model(model_path, prediction_steps=40)
+            self.model = Model(model_path, prediction_steps=prediction_steps)
             self.get_logger().info('Model loaded successfully')
         except Exception as e:
             self.get_logger().error(f'Failed to load model: {str(e)}')
@@ -52,10 +66,10 @@ class JoyControllerNode(Node):
         )
         
         # Publisher
-        self.joy_pub = self.create_publisher(Joy, joy_topic, 10)
+        self.cmd_vel_pub = self.create_publisher(TwistStamped, cmd_vel_topic, 10)
         
         self.get_logger().info(f'Subscribing to: {scan_topic}')
-        self.get_logger().info(f'Publishing to: {joy_topic}')
+        self.get_logger().info(f'Publishing to: {cmd_vel_topic}')
     
     def scan_callback(self, msg: LaserScan):
         try:
@@ -68,37 +82,68 @@ class JoyControllerNode(Node):
             
             # シーケンスにscan_rangesを追加
             self.scan_sequence.append(scan_ranges)
+            # アクション履歴に前回のアクションを追加
+            self.action_sequence.append([self.last_throttle, self.last_angle])
             
-            # 4つ溜まるまで待つ
-            if len(self.scan_sequence) < self.sequence_length:
-                self.get_logger().info(f'Collecting data... ({len(self.scan_sequence)}/{self.sequence_length})')
+            # 必要なデータ数を計算（strideを考慮）
+            required_length = (self.sequence_length - 1) * self.history_stride + 1
+            
+            # 必要な数が溜まるまで待つ
+            if len(self.scan_sequence) < required_length:
+                self.get_logger().info(
+                    f'Collecting data... ({len(self.scan_sequence)}/{required_length})'
+                )
                 return
             
-            # 4つを超えたら古いものを削除
-            if len(self.scan_sequence) > self.sequence_length:
+            # 必要な数を超えたら古いものを削除
+            while len(self.scan_sequence) > required_length:
                 self.scan_sequence.pop(0)
+                self.action_sequence.pop(0)
             
-            # 4つのscan_rangesを結合して推論の入力を作成
-            # (4, scan_size) の形状にして、チャネル次元として扱う
-            inference_input = np.stack(self.scan_sequence, axis=0)  # shape: (4, scan_size)
+            # strideを考慮してデータを取得
+            scan_indices = [i * self.history_stride for i in range(self.sequence_length)]
+            inference_scan = np.stack(
+                [self.scan_sequence[i] for i in scan_indices], axis=0
+            )  # shape: (4, scan_size)
+            inference_action = np.array(
+                [self.action_sequence[i] for i in scan_indices], dtype=np.float32
+            )  # shape: (4, 2)
             
             # 推論実行
-            joy_axes = self.model.inference_next_step_only(inference_input)
+            prediction = self.model.inference_next_step_only(
+                inference_scan, inference_action
+            )
             
-            # Joyメッセージの作成
-            joy_msg = Joy()
-            joy_msg.header.stamp = self.get_clock().now().to_msg()
-            joy_msg.header.frame_id = "joy"
+            # 予測結果を取得 [throttle, angle]
+            throttle = prediction[0]
+            angle = prediction[1]
             
-            joy_axes[0] = max(min(joy_axes[0] * 4.0, 0.99), -0.99)
-            joy_msg.axes = [0.0, joy_axes[0], joy_axes[1]]
-            joy_msg.buttons = []
+            # アクションを更新
+            self.last_throttle = throttle
+            self.last_angle = angle
+            
+            # TwistStampedメッセージの作成
+            twist_msg = TwistStamped()
+            twist_msg.header.stamp = self.get_clock().now().to_msg()
+            twist_msg.header.frame_id = "base_link"
+            
+            # throttleを線速度、angleを角速度に変換
+            # throttleのスケーリング（必要に応じて調整）
+            twist_msg.twist.linear.x = float(throttle * 4.0)
+            twist_msg.twist.linear.y = 0.0
+            twist_msg.twist.linear.z = 0.0
+            
+            # angleをそのまま角速度として使用
+            twist_msg.twist.angular.x = 0.0
+            twist_msg.twist.angular.y = 0.0
+            twist_msg.twist.angular.z = float(angle)
             
             # パブリッシュ
-            self.joy_pub.publish(joy_msg)
+            self.cmd_vel_pub.publish(twist_msg)
             
         except Exception as e:
             self.get_logger().error(f'Error in scan_callback: {str(e)}')
+
 
 def main(args=None):
     rclpy.init(args=args)
@@ -112,6 +157,7 @@ def main(args=None):
     finally:
         if rclpy.ok():
             rclpy.shutdown()
+
 
 if __name__ == '__main__':
     main()

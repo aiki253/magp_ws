@@ -4,11 +4,17 @@ import torch.nn as nn
 
 
 class DNN(nn.Module):
-    def __init__(self, input_dim=1081, output_dim=2, history_length=4, prediction_steps=1):
+    def __init__(
+        self,
+        input_dim=1081,
+        output_dim=2,
+        history_length=4,
+        prediction_steps=1,
+    ):
         """
         Args:
             input_dim: 入力スキャンデータの次元数
-            output_dim: 各ステップの出力次元（speed, angleで2）
+            output_dim: 各ステップの出力次元（throttle, angleで2）
             history_length: 入力履歴の長さ
             prediction_steps: 予測する未来のステップ数
         """
@@ -31,7 +37,10 @@ class DNN(nn.Module):
             L = conv1d_out_len(L, k, p, s)
         flatten_dim = L * 64
 
-        self.fc1 = nn.Linear(flatten_dim, 100)
+        # throttle履歴とangle履歴を追加（各history_length個）
+        fc1_input_dim = flatten_dim + history_length * 2
+
+        self.fc1 = nn.Linear(fc1_input_dim, 100)
         self.fc2 = nn.Linear(100, 50)
         self.fc3 = nn.Linear(50, 10)
         # 出力を prediction_steps * output_dim に変更
@@ -39,23 +48,34 @@ class DNN(nn.Module):
 
         self.relu = nn.ReLU()
 
-    def forward(self, x):
-        # x の形状: (batch_size, history_length, scan_dim)
+    def forward(self, x, action_history):
+        """
+        Args:
+            x: スキャンデータ (batch_size, history_length, scan_dim)
+            action_history: アクション履歴 (batch_size, history_length, 2)
+                           [throttle, angle]のペアがhistory_length個
+        """
+        # CNNでスキャンデータを処理
         x = self.relu(self.conv1(x))
         x = self.relu(self.conv2(x))
         x = self.relu(self.conv3(x))
         x = self.relu(self.conv4(x))
         x = self.relu(self.conv5(x))
         x = x.flatten(1)
+
+        # アクション履歴を結合
+        action_flat = action_history.flatten(1)  # (batch, history_length * 2)
+        x = torch.cat([x, action_flat], dim=1)
+
         x = self.relu(self.fc1(x))
         x = self.relu(self.fc2(x))
         x = self.relu(self.fc3(x))
         x = self.fc4(x)
-        
+
         # (batch_size, prediction_steps * output_dim) -> (batch_size, prediction_steps, output_dim)
         batch_size = x.size(0)
         x = x.view(batch_size, self.prediction_steps, -1)
-        
+
         return x
 
 
@@ -81,29 +101,38 @@ class Model:
         self.model.to(self.device)
         self.model.eval()
 
-    def inference(self, scan_ranges: np.ndarray) -> list:
+    def inference(
+        self, scan_ranges: np.ndarray, action_history: np.ndarray
+    ) -> list:
         """
         推論を実行
-        
+
         Args:
             scan_ranges: スキャンデータ (history_length, scan_dim) の形状
-        
+            action_history: アクション履歴 (history_length, 2) の形状
+                          [[throttle1, angle1], [throttle2, angle2], ...]
+
         Returns:
             予測結果のリスト
-            - prediction_steps=1: [speed, angle]
-            - prediction_steps>1: [[speed1, angle1], [speed2, angle2], ...]
+            - prediction_steps=1: [throttle, angle]
+            - prediction_steps>1: [[throttle1, angle1], [throttle2, angle2], ...]
         """
-        input_data = torch.from_numpy(
-            np.array(scan_ranges, dtype=np.float32)
-        ).unsqueeze(0)
+        input_data = torch.from_numpy(np.array(scan_ranges, dtype=np.float32)).unsqueeze(
+            0
+        )
         input_data = input_data.to(self.device)
 
+        action_data = torch.from_numpy(
+            np.array(action_history, dtype=np.float32)
+        ).unsqueeze(0)
+        action_data = action_data.to(self.device)
+
         with torch.no_grad():
-            output = self.model(input_data)
+            output = self.model(input_data, action_data)
 
         # (1, prediction_steps, 2) -> (prediction_steps, 2)
         predictions = output.cpu().numpy().squeeze(0)
-        
+
         if self.prediction_steps == 1:
             # 単一ステップの場合は1次元リストを返す
             return predictions.flatten().tolist()
@@ -111,18 +140,21 @@ class Model:
             # 複数ステップの場合は2次元リストを返す
             return predictions.tolist()
 
-    def inference_next_step_only(self, scan_ranges: np.ndarray) -> list:
+    def inference_next_step_only(
+        self, scan_ranges: np.ndarray, action_history: np.ndarray
+    ) -> list:
         """
         次のステップのみを予測（複数ステップモデルでも最初のステップだけ返す）
-        
+
         Args:
             scan_ranges: スキャンデータ (history_length, scan_dim) の形状
-        
+            action_history: アクション履歴 (history_length, 2) の形状
+
         Returns:
-            次ステップの予測 [speed, angle]
+            次ステップの予測 [throttle, angle]
         """
-        predictions = self.inference(scan_ranges)
-        
+        predictions = self.inference(scan_ranges, action_history)
+
         if self.prediction_steps == 1:
             return predictions
         else:
@@ -130,13 +162,11 @@ class Model:
 
 
 if __name__ == "__main__":
-    # 使用例1: 単一ステップ予測（元のmodel.pthを使用）
-    print("=== Single-step prediction ===")
-    dummy_input = np.random.rand(4, 1081).astype(np.float32)
-    
-    # 元のモデルファイルの場合（prediction_steps=1がデフォルト）
-    model_single = Model("./model/model.pth", prediction_steps=1)
-    output = model_single.inference(dummy_input)
-    print(f"Output shape: {np.array(output).shape}")
+    # 使用例
+    print("=== Inference example ===")
+    dummy_scan = np.random.rand(4, 1081).astype(np.float32)
+    dummy_action = np.random.rand(4, 2).astype(np.float32)
+
+    model = Model("../model/model.pth", prediction_steps=1)
+    output = model.inference(dummy_scan, dummy_action)
     print(f"Output: {output}")
-    
