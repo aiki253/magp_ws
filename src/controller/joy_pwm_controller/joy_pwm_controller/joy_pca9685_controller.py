@@ -39,8 +39,8 @@ class JoyI2CController(Node):
         
         # PWM パラメータ（あなたの確定値）
         self.MOTOR_NEUTRAL = 1620
-        self.MOTOR_MIN = 1500      # 後退最大
-        self.MOTOR_MAX = 1900      # 前進最大
+        self.MOTOR_MIN = 1500      # 前進最大 max;1100
+        self.MOTOR_MAX = 1900      # 後退最大 max;2300
         
         self.STEERING_CENTER = 1500
         self.STEERING_LEFT = 1200   # 左最大
