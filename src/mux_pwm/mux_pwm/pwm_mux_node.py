@@ -22,14 +22,13 @@ class PwmMuxNode(Node):
         self.declare_parameter('speed_deadzone', 0.05)
         self.declare_parameter('steering_deadzone', 0.05)
         self.declare_parameter('manual_gain', 1.0)
-        self.declare_parameter('torch_gain', 1.1)  # torch_pwm倍率のデフォルト値
+        self.declare_parameter('torch_gain', 1.1) # torch_pwm倍率のデフォルト値
         self.declare_parameter('gain_step', 0.2)
-        self.declare_parameter('torch_gain_step', 0.1)  # torch_gain調整ステップ
-        self.declare_parameter('ps_button_index', 12) # PSボタン
-        self.declare_parameter('l2_button_index', 6) # L2ボタン
-        self.declare_parameter('r2_button_index', 7)  # R2ボタン
-        self.declare_parameter('dpad_left_index', 13)  # 十字キー左
-        self.declare_parameter('dpad_right_index', 14)  # 十字キー右
+        self.declare_parameter('torch_gain_step', 0.1)
+        self.declare_parameter('ps_button_index', 12) # PSボタンインデックス
+        self.declare_parameter('l2_button_index', 6) # L2ボタンインデックス
+        self.declare_parameter('r2_button_index', 7) # R2ボタンインデックス
+        self.declare_parameter('dpad_axis_index', 6)  # 十字キーの軸インデックス
         
         # パラメータの取得
         self.MOTOR_NEUTRAL = self.get_parameter('motor_neutral').value
@@ -47,8 +46,7 @@ class PwmMuxNode(Node):
         self.ps_button_index = self.get_parameter('ps_button_index').value
         self.l2_button_index = self.get_parameter('l2_button_index').value
         self.r2_button_index = self.get_parameter('r2_button_index').value
-        self.dpad_left_index = self.get_parameter('dpad_left_index').value
-        self.dpad_right_index = self.get_parameter('dpad_right_index').value
+        self.dpad_axis_index = self.get_parameter('dpad_axis_index').value
         
         # Subscribers
         self.joy_sub = self.create_subscription(
@@ -71,12 +69,11 @@ class PwmMuxNode(Node):
         self.torch_gain_pub = self.create_publisher(Float32, '/mux_pwm/torch_gain', 10)
         
         # State variables
-        self.manual_mode = True  # False: Auto (torch_pwm), True: Manual (joy)
+        self.manual_mode = True
         self.last_ps_button_state = 0
         self.latest_joy = None
         self.latest_torch_pwm = None
-        self.prev_dpad_left = 0
-        self.prev_dpad_right = 0
+        self.prev_dpad_value = 0.0  # 前回の十字キー値
         
         # 初期ステータスをパブリッシュ
         self.publish_status()
@@ -222,42 +219,36 @@ class PwmMuxNode(Node):
         if len(msg.buttons) > self.l2_button_index:
             l2_pressed = msg.buttons[self.l2_button_index] == 1
         
-        # 十字キーでのゲイン調整
-        if len(msg.buttons) > max(self.dpad_left_index, self.dpad_right_index):
-            dpad_right = msg.buttons[self.dpad_right_index]
-            dpad_left = msg.buttons[self.dpad_left_index]
+        # 十字キーでのゲイン調整（axes[6]から取得）
+        if len(msg.axes) > self.dpad_axis_index:
+            current_dpad_value = msg.axes[self.dpad_axis_index]
             
-            if r2_pressed:
-                # R2押下時: torch_gain調整
-                # 右: torch_gainを増やす
-                if dpad_right == 1 and self.prev_dpad_right == 0:
-                    self.torch_gain = round(self.torch_gain + self.torch_gain_step, 1)
-                    self.get_logger().info(f'Torch gain increased to: {self.torch_gain:.1f}')
-                    self.publish_torch_gain()
+            # 連続検出防止: 前回が0.0で今回が非0.0のときのみ処理
+            if self.prev_dpad_value == 0.0 and current_dpad_value != 0.0:
+                if r2_pressed:
+                    # R2押下時: torch_gain調整
+                    if current_dpad_value < 0:  # 右 (-1)
+                        self.torch_gain = round(self.torch_gain + self.torch_gain_step, 1)
+                        self.get_logger().info(f'Torch gain increased to: {self.torch_gain:.1f}')
+                        self.publish_torch_gain()
+                    elif current_dpad_value > 0:  # 左 (1)
+                        self.torch_gain = max(0.0, round(self.torch_gain - self.torch_gain_step, 1))
+                        self.get_logger().info(f'Torch gain decreased to: {self.torch_gain:.1f}')
+                        self.publish_torch_gain()
                 
-                # 左: torch_gainを減らす
-                if dpad_left == 1 and self.prev_dpad_left == 0:
-                    self.torch_gain = max(0.0, round(self.torch_gain - self.torch_gain_step, 1))
-                    self.get_logger().info(f'Torch gain decreased to: {self.torch_gain:.1f}')
-                    self.publish_torch_gain()
+                elif l2_pressed:
+                    # L2押下時: manual_gain調整
+                    if current_dpad_value < 0:  # 右 (-1)
+                        self.manual_gain = min(1.0, round(self.manual_gain + self.gain_step, 1))
+                        self.get_logger().info(f'Manual gain increased to: {self.manual_gain:.1f}')
+                        self.publish_manual_gain()
+                    elif current_dpad_value > 0:  # 左 (1)
+                        self.manual_gain = max(0.0, round(self.manual_gain - self.gain_step, 1))
+                        self.get_logger().info(f'Manual gain decreased to: {self.manual_gain:.1f}')
+                        self.publish_manual_gain()
             
-            elif l2_pressed:
-                # L2押下時: manual_gain調整
-                # 右: manual_gainを増やす
-                if dpad_right == 1 and self.prev_dpad_right == 0:
-                    self.manual_gain = min(1.0, round(self.manual_gain + self.gain_step, 1))
-                    self.get_logger().info(f'Manual gain increased to: {self.manual_gain:.1f}')
-                    self.publish_manual_gain()
-                
-                # 左: manual_gainを減らす
-                if dpad_left == 1 and self.prev_dpad_left == 0:
-                    self.manual_gain = max(0.0, round(self.manual_gain - self.gain_step, 1))
-                    self.get_logger().info(f'Manual gain decreased to: {self.manual_gain:.1f}')
-                    self.publish_manual_gain()
-            
-            # 前回の状態を更新
-            self.prev_dpad_right = dpad_right
-            self.prev_dpad_left = dpad_left
+            # 前回の値を更新
+            self.prev_dpad_value = current_dpad_value
         
         # メッセージを発行
         self.publish_mux_pwm()
