@@ -139,7 +139,7 @@ class NNControllerNode(Node):
             pwm_msg.twist.angular.z = float(angle)
             
             # パブリッシュ
-            self.cmd_vel_pub.publish(pwm_msg)
+            self.pwm_pub.publish(pwm_msg)
             
         except Exception as e:
             self.get_logger().error(f'Error in scan_callback: {str(e)}')
