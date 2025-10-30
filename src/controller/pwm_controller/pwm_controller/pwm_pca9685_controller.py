@@ -118,6 +118,28 @@ class PwmController(Node):
         duty_cycle = self._us_to_duty_cycle(pwm_value)
         self.pca.channels[self.steering_channel].duty_cycle = duty_cycle
     
+    def apply_emergency_brake(self):
+        """
+        緊急ブレーキを適用
+        現在の進行方向とは逆の限界値を出力してブレーキをかける
+        
+        Returns:
+            int: ブレーキ用PWM値（μs）
+        """
+        # 前進中（NEUTRALより小さい値）の場合は最大バック（MOTOR_MAX）を出力
+        if self.current_motor_pwm < self.MOTOR_NEUTRAL:
+            brake_pwm = self.MOTOR_MAX_ABSOLUTE
+            self.get_logger().info('緊急ブレーキ: 前進→バック')
+        # バック中（NEUTRALより大きい値）の場合は最大前進（MOTOR_MIN）を出力
+        elif self.current_motor_pwm > self.MOTOR_NEUTRAL:
+            brake_pwm = self.MOTOR_MIN_ABSOLUTE
+            self.get_logger().info('緊急ブレーキ: バック→前進')
+        # ニュートラルの場合はニュートラルを維持
+        else:
+            brake_pwm = self.MOTOR_NEUTRAL
+        
+        return brake_pwm
+    
     def apply_speed_limit(self, input_motor_pwm):
         """
         入力PWM値に速度リミットを適用
@@ -129,9 +151,9 @@ class PwmController(Node):
         Returns:
             limited_motor_pwm: リミット適用後のPWM値（μs）
         """
-        # 緊急停止時はニュートラルに固定
+        # 緊急停止時はブレーキをかける
         if self.emergency_stop_active:
-            return self.MOTOR_NEUTRAL
+            return self.apply_emergency_brake()
         
         # 前進（MOTOR_NEUTRALより小さい値）の場合のみリミットを適用
         if input_motor_pwm < self.MOTOR_NEUTRAL:
@@ -160,7 +182,14 @@ class PwmController(Node):
     def joy_callback(self, msg):
         """Joyコールバック（緊急停止と速度リミット調整の両方を処理）"""
         # 緊急停止チェック
+        prev_emergency_stop = self.emergency_stop_active
         self.emergency_stop_active = self.check_emergency_stop(msg)
+        
+        # 緊急停止状態が変化したときにログ出力
+        if self.emergency_stop_active and not prev_emergency_stop:
+            self.get_logger().warn('緊急停止が有効になりました！')
+        elif not self.emergency_stop_active and prev_emergency_stop:
+            self.get_logger().info('緊急停止が解除されました')
         
         # 緊急停止中は速度リミット調整を無効化
         if self.emergency_stop_active:
@@ -202,7 +231,7 @@ class PwmController(Node):
         output_msg.header.stamp = self.get_clock().now().to_msg()
         output_msg.header.frame_id = "base_link"
         
-        # 速度リミット適用（緊急停止時は自動的にニュートラルに制限される）
+        # 速度リミット適用（緊急停止時は自動的にブレーキがかかる）
         limited_motor = self.apply_speed_limit(msg.twist.linear.x)
         
         # 範囲チェック（二重チェック）
@@ -213,8 +242,9 @@ class PwmController(Node):
         if self.emergency_stop_active:
             output_msg.twist.angular.z = float(self.STEERING_CENTER)
         
-        # 現在の値を保存
-        self.current_motor_pwm = output_msg.twist.linear.x
+        # 現在の値を保存（ブレーキ適用前の値を保存）
+        if not self.emergency_stop_active:
+            self.current_motor_pwm = output_msg.twist.linear.x
         self.current_steering_pwm = output_msg.twist.angular.z
         
         # PWM出力
