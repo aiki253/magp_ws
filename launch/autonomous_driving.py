@@ -27,9 +27,9 @@ def generate_launch_description():
         
         # joy_mux_nodeを起動
         Node(
-            package='joy_mux',
-            executable='joy_mux_node',
-            name='joy_mux_node',
+            package='mux_pwm',
+            executable='pwm_mux_node',
+            name='pwm_mux_node',
             output='screen'
         ),
         
@@ -43,7 +43,7 @@ def generate_launch_description():
         
         # Pythonスクリプトを起動
         ExecuteProcess(
-            cmd=['python3', f'{home_dir}/magp_ws/src/controller/joy_pwm_controller/joy_pwm_controller/joy_pca9685_controller.py'],
+            cmd=['python3', f'{home_dir}/magp_ws/src/controller/pwm_controller/pwm_controller/pwm_pca9685_controller.py'],
             output='screen'
         ),
         
