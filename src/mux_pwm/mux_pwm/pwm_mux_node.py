@@ -79,18 +79,18 @@ class PwmMuxNode(Node):
         Args:
             joy_value: axes[1] の値 (-1.0 ~ +1.0)
         Returns:
-            motor_pwm: PWM値（マイクロ秒）
+            motor_pwm: PWM値（マイクロ秒）float型
         """
         if abs(joy_value) < self.SPEED_DEADZONE:
-            return self.MOTOR_NEUTRAL
+            return float(self.MOTOR_NEUTRAL)
         elif joy_value > 0:
             # 前進: 1620 → 1100
             adjusted = (joy_value - self.SPEED_DEADZONE) / (1.0 - self.SPEED_DEADZONE)
-            return self.MOTOR_NEUTRAL - (self.MOTOR_NEUTRAL - self.MOTOR_MIN) * adjusted
+            return float(self.MOTOR_NEUTRAL - (self.MOTOR_NEUTRAL - self.MOTOR_MIN) * adjusted)
         else:
             # 後退: 1620 → 2300
             adjusted = (joy_value + self.SPEED_DEADZONE) / (1.0 - self.SPEED_DEADZONE)
-            return self.MOTOR_NEUTRAL + (self.MOTOR_MAX - self.MOTOR_NEUTRAL) * abs(adjusted)
+            return float(self.MOTOR_NEUTRAL + (self.MOTOR_MAX - self.MOTOR_NEUTRAL) * abs(adjusted))
     
     def convert_joy_to_steering_pwm(self, joy_value):
         """
@@ -98,16 +98,16 @@ class PwmMuxNode(Node):
         Args:
             joy_value: axes[2] の値 (-1.0 ~ +1.0)
         Returns:
-            steering_pwm: PWM値（マイクロ秒）
+            steering_pwm: PWM値（マイクロ秒）float型
         """
         if abs(joy_value) < self.STEERING_DEADZONE:
-            return self.STEERING_CENTER
+            return float(self.STEERING_CENTER)
         elif joy_value > 0:
             # 右: 1500 → 1800
-            return self.STEERING_CENTER + (self.STEERING_RIGHT - self.STEERING_CENTER) * joy_value
+            return float(self.STEERING_CENTER + (self.STEERING_RIGHT - self.STEERING_CENTER) * joy_value)
         else:
             # 左: 1500 → 1200
-            return self.STEERING_CENTER + (self.STEERING_CENTER - self.STEERING_LEFT) * joy_value
+            return float(self.STEERING_CENTER + (self.STEERING_CENTER - self.STEERING_LEFT) * joy_value)
     
     def apply_manual_addition(self, torch_pwm_msg, joy_msg):
         """
@@ -139,15 +139,24 @@ class PwmMuxNode(Node):
         mixed_motor = torch_motor + self.manual_gain * manual_motor_offset
         mixed_steering = torch_steering + self.manual_gain * manual_steering_offset
         
-        # クリッピング
-        output_msg.twist.linear.x = max(self.MOTOR_MIN, min(self.MOTOR_MAX, mixed_motor))
-        output_msg.twist.angular.z = max(self.STEERING_LEFT, min(self.STEERING_RIGHT, mixed_steering))
+        # クリッピング (float型で代入)
+        output_msg.twist.linear.x = float(max(self.MOTOR_MIN, min(self.MOTOR_MAX, mixed_motor)))
+        output_msg.twist.angular.z = float(max(self.STEERING_LEFT, min(self.STEERING_RIGHT, mixed_steering)))
         
         return output_msg
     
     def joy_callback(self, msg):
         """Joyメッセージのコールバック"""
         self.latest_joy = msg
+
+        if len(msg.axes) >= 3:
+            # ステアリング: 左スティック横 (axis 2; right horizontal stick)·
+            # -1.0 = 左, +1.0 = 右
+            msg.axes[2] = -msg.axes[2]  # 反転
+            
+            # 速度: 右スティック縦 (axis 1; left vertical stick)
+            # -1.0 = 後退, +1.0 = 前進
+            msg.axes[1] = msg.axes[1]
         
         # PSボタンでのモード切り替え
         if len(msg.buttons) > self.ps_button_index:
