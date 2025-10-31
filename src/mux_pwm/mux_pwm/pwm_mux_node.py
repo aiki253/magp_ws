@@ -287,7 +287,7 @@ class PwmMuxNode(Node):
                 self.mux_pwm_pub.publish(output_msg)
         
         # ステータスをパブリッシュ
-        self.publish_status()
+        # self.publish_status()
     
     def publish_status(self):
         """現在のモード状態をJSON形式でパブリッシュ"""
@@ -300,10 +300,7 @@ class PwmMuxNode(Node):
         
         status_dict = {
             'mode': 'Manual' if self.manual_mode else 'Auto',
-            'source': 'joy' if self.manual_mode else 'torch_pwm',
-            'l2_manual_addition': l2_pressed and not self.manual_mode,
-            'manual_gain': float(self.manual_gain),
-            'torch_gain': float(self.torch_gain)
+            'source': 'joy' if self.manual_mode else 'torch_joy',
         }
         status_msg.data = json.dumps(status_dict)
         self.status_pub.publish(status_msg)
