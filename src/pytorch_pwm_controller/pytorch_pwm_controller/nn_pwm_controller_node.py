@@ -145,7 +145,7 @@ class NNControllerNode(Node):
                 inference_scan, inference_action
             )
 
-            self.get_logger().info(f'DNN output is {prediction[0]:.4f}, {prediction[1]:.4f}')
+            # self.get_logger().info(f'DNN output is {prediction[0]:.4f}, {prediction[1]:.4f}')
             
             # 予測結果を取得 [throttle, angle]
             throttle = prediction[0]
