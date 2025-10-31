@@ -109,7 +109,7 @@ class NNControllerNode(Node):
             inference_action = np.array(
                 [self.action_sequence[i] for i in scan_indices], dtype=np.float32
             )  # shape: (4, 2)
-            
+
             # 推論実行
             prediction = self.model.inference_next_step_only(
                 inference_scan, inference_action
