@@ -26,7 +26,7 @@ class PwmController(Node):
         self.declare_parameter('steering_center', 1500)
         self.declare_parameter('steering_left', 1200)
         self.declare_parameter('steering_right', 1800)
-        self.declare_parameter('speed_scale_step', 50)
+        self.declare_parameter('speed_scale_step', 10)
         self.declare_parameter('l1_button_index', 4)
         self.declare_parameter('r1_button_index', 5)
         self.declare_parameter('dpad_vertical_axis', 7)
