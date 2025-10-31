@@ -1,9 +1,9 @@
 <?xml version="1.0"?>
 <?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypealias="format3"?>
 <package format="3">
-  <name>joy_pwm_controller</name>
+  <name>pwm_controller</name>
   <version>1.0.0</version>
-  <description>Joy controller for PWM servo control</description>
+  <description>Controller for PWM servo control using I2C (PCA9685)</description>
   <maintainer email="your_email@example.com">Your Name</maintainer>
   <license>MIT</license>
 

@@ -23,8 +23,8 @@ def generate_launch_description():
         # Joy I2C Controller node
         Node(
             package='your_package_name',  # パッケージ名を変更
-            executable='joy_i2c_controller.py',
-            name='joy_i2c_controller',
+            executable='pwm_pca9685_controller.py',
+            name='pwm_controller',
             output='screen',
             parameters=[{
                 'motor_channel': 0,

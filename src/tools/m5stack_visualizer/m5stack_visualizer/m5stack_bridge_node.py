@@ -48,7 +48,7 @@ class M5StackBridgeNode(Node):
         
         self.mux_sub = self.create_subscription(
             String,
-            '/mux_joy/status',
+            '/mux_pwm/status',
             self.mux_callback,
             10
         )

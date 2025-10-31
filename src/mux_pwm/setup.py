@@ -1,6 +1,6 @@
 from setuptools import find_packages, setup
 
-package_name = 'joy_mux'
+package_name = 'mux_pwm'
 
 setup(
     name=package_name,
@@ -15,12 +15,12 @@ setup(
     zip_safe=True,
     maintainer='your_name',
     maintainer_email='your_email@example.com',
-    description='Joy multiplexer for switching between manual and automatic control',
+    description='PWM multiplexer for switching between manual and automatic control',
     license='Apache-2.0',
     tests_require=['pytest'],
     entry_points={
         'console_scripts': [
-            'joy_mux_node = joy_mux.joy_mux_node:main',
+            'pwm_mux_node = mux_pwm.pwm_mux_node:main',
         ],
     },
 )

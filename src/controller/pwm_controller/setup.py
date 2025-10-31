@@ -1,6 +1,6 @@
 from setuptools import setup, find_packages
 
-package_name = 'joy_pwm_controller'
+package_name = 'pwm_controller'
 
 setup(
     name=package_name,
@@ -15,12 +15,12 @@ setup(
     zip_safe=True,
     maintainer='jetson',
     maintainer_email='jetson@example.com',
-    description='Joy controller for PWM servo control',
+    description='Controller for PWM servo control using I2C (PCA9685)',
     license='MIT',
     tests_require=['pytest'],
     entry_points={
         'console_scripts': [
-            'joy_pwm_controller = joy_pwm_controller.joy_pwm_controller:main'
+            'pwm_controller = pwm_controller.pwm_controller:main'
         ],
     },
 )

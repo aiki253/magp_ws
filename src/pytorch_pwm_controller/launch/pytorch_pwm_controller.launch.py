@@ -9,7 +9,7 @@ import os
 
 def generate_launch_description():
     # パッケージのパスを取得
-    package_dir = get_package_share_directory('pytorch_joy_controller')
+    package_dir = get_package_share_directory('pytorch_pwm_controller')
     default_model_path = os.path.join(package_dir, 'model', 'model.pth')
     
     # Launch引数の定義
@@ -33,9 +33,9 @@ def generate_launch_description():
     
     # ノードの定義
     joy_controller_node = Node(
-        package='pytorch_joy_controller',
-        executable='joy_controller_node',
-        name='joy_controller_node',
+        package='pytorch_pwm_controller',
+        executable='nn_controller_node',
+        name='nn_controller_node',
         output='screen',
         parameters=[{
             'model_path': LaunchConfiguration('model_path'),
