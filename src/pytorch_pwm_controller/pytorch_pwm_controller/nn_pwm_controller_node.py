@@ -92,9 +92,8 @@ class NNControllerNode(Node):
             
             # 必要な数が溜まるまで待つ
             if len(self.scan_sequence) < required_length:
-                self.get_logger().info(
-                    f'Collecting data... ({len(self.scan_sequence)}/{required_length})'
-                )
+                if len(self.scan_sequence) == required_length - 1:
+                    self.get_logger().info('Collected enough data for inference.')
                 return
             
             # 必要な数を超えたら古いものを削除
