@@ -8,22 +8,25 @@ class DNN(nn.Module):
         self,
         input_dim=1081,
         output_dim=2,
-        history_length=4,
+        scan_history_length=4,
+        action_history_length=4,
         prediction_steps=1,
     ):
         """
         Args:
             input_dim: 入力スキャンデータの次元数
             output_dim: 各ステップの出力次元（throttle, angleで2）
-            history_length: 入力履歴の長さ
+            scan_history_length: スキャンデータの履歴長
+            action_history_length: アクション履歴の長さ（0の場合はアクション履歴を使用しない）
             prediction_steps: 予測する未来のステップ数
         """
         super().__init__()
-        self.history_length = history_length
+        self.scan_history_length = scan_history_length
+        self.action_history_length = action_history_length
         self.prediction_steps = prediction_steps
 
-        # 入力チャネル数を履歴長に変更
-        self.conv1 = nn.Conv1d(history_length, 24, kernel_size=5, stride=2, padding=2)
+        # スキャン履歴用の畳み込み層
+        self.conv1 = nn.Conv1d(scan_history_length, 24, kernel_size=5, stride=2, padding=2)
         self.conv2 = nn.Conv1d(24, 36, kernel_size=5, stride=2, padding=2)
         self.conv3 = nn.Conv1d(36, 48, kernel_size=5, stride=2, padding=2)
         self.conv4 = nn.Conv1d(48, 64, kernel_size=3, stride=1, padding=1)
@@ -37,23 +40,26 @@ class DNN(nn.Module):
             L = conv1d_out_len(L, k, p, s)
         flatten_dim = L * 64
 
-        # throttle履歴とangle履歴を追加（各history_length個）
-        fc1_input_dim = flatten_dim + history_length * 2
+        # アクション履歴を使用する場合のみ追加
+        if action_history_length > 0:
+            fc1_input_dim = flatten_dim + action_history_length * 2
+        else:
+            fc1_input_dim = flatten_dim
 
         self.fc1 = nn.Linear(fc1_input_dim, 100)
         self.fc2 = nn.Linear(100, 50)
         self.fc3 = nn.Linear(50, 10)
-        # 出力を prediction_steps * output_dim に変更
         self.fc4 = nn.Linear(10, prediction_steps * output_dim)
 
         self.relu = nn.ReLU()
 
-    def forward(self, x, action_history):
+    def forward(self, x, action_history=None):
         """
         Args:
-            x: スキャンデータ (batch_size, history_length, scan_dim)
-            action_history: アクション履歴 (batch_size, history_length, 2)
-                           [throttle, angle]のペアがhistory_length個
+            x: スキャンデータ (batch_size, scan_history_length, scan_dim)
+            action_history: アクション履歴 (batch_size, action_history_length, 2)
+                           [throttle, angle]のペアがaction_history_length個
+                           action_history_length=0の場合はNoneでも可
         """
         # CNNでスキャンデータを処理
         x = self.relu(self.conv1(x))
@@ -63,9 +69,10 @@ class DNN(nn.Module):
         x = self.relu(self.conv5(x))
         x = x.flatten(1)
 
-        # アクション履歴を結合
-        action_flat = action_history.flatten(1)  # (batch, history_length * 2)
-        x = torch.cat([x, action_flat], dim=1)
+        # アクション履歴を使用する場合のみ結合
+        if self.action_history_length > 0 and action_history is not None:
+            action_flat = action_history.flatten(1)  # (batch, action_history_length * 2)
+            x = torch.cat([x, action_flat], dim=1)
 
         x = self.relu(self.fc1(x))
         x = self.relu(self.fc2(x))
@@ -80,17 +87,31 @@ class DNN(nn.Module):
 
 
 class Model:
-    def __init__(self, path, prediction_steps=1):
+    def __init__(
+        self,
+        path,
+        prediction_steps=1,
+        scan_history_length=4,
+        action_history_length=4,
+    ):
         """
         Args:
             path: モデルの重みファイルのパス
             prediction_steps: 予測ステップ数（学習時と同じ値を指定）
+            scan_history_length: スキャン履歴長（学習時と同じ値を指定）
+            action_history_length: アクション履歴長（学習時と同じ値を指定）
         """
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.prediction_steps = prediction_steps
+        self.scan_history_length = scan_history_length
+        self.action_history_length = action_history_length
 
         # モデルのインスタンスを作成
-        self.model = DNN(prediction_steps=prediction_steps)
+        self.model = DNN(
+            scan_history_length=scan_history_length,
+            action_history_length=action_history_length,
+            prediction_steps=prediction_steps,
+        )
 
         # 重みを読み込み
         self.model.load_state_dict(
@@ -108,8 +129,8 @@ class Model:
         推論を実行
 
         Args:
-            scan_ranges: スキャンデータ (history_length, scan_dim) の形状
-            action_history: アクション履歴 (history_length, 2) の形状
+            scan_ranges: スキャンデータ (scan_history_length, scan_dim) の形状
+            action_history: アクション履歴 (action_history_length, 2) の形状
                           [[throttle1, angle1], [throttle2, angle2], ...]
 
         Returns:
@@ -147,8 +168,8 @@ class Model:
         次のステップのみを予測（複数ステップモデルでも最初のステップだけ返す）
 
         Args:
-            scan_ranges: スキャンデータ (history_length, scan_dim) の形状
-            action_history: アクション履歴 (history_length, 2) の形状
+            scan_ranges: スキャンデータ (scan_history_length, scan_dim) の形状
+            action_history: アクション履歴 (action_history_length, 2) の形状
 
         Returns:
             次ステップの予測 [throttle, angle]
@@ -164,9 +185,14 @@ class Model:
 # if __name__ == "__main__":
 #     # 使用例
 #     print("=== Inference example ===")
-#     dummy_scan = np.random.rand(4, 1081).astype(np.float32)
+#     dummy_scan = np.random.rand(8, 1081).astype(np.float32)
 #     dummy_action = np.random.rand(4, 2).astype(np.float32)
 
-#     model = Model("./model/model.pth", prediction_steps=1)
+#     model = Model(
+#         "../model/model.pth",
+#         prediction_steps=40,
+#         scan_history_length=8,
+#         action_history_length=4,
+#     )
 #     output = model.inference(dummy_scan, dummy_action)
 #     print(f"Output: {output}")
