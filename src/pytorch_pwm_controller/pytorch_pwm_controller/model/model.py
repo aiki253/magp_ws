@@ -116,7 +116,7 @@ class Model:
         scan_history_length=4,
         d_model=256,
         nhead=8,
-        num_layers=4,
+        num_layers=3,
         dim_feedforward=512,
         dropout=0.1,
     ):
