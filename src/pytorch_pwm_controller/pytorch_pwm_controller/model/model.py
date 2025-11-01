@@ -32,7 +32,7 @@ class DNN(nn.Module):
         prediction_steps=1,
         d_model=256,
         nhead=8,
-        num_layers=4,
+        num_layers=3,
         dim_feedforward=512,
         dropout=0.1,
     ):
