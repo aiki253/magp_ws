@@ -1,6 +1,26 @@
 import numpy as np
 import torch
 import torch.nn as nn
+import math
+
+
+class PositionalEncoding(nn.Module):
+    def __init__(self, d_model, max_len=5000):
+        super().__init__()
+        pe = torch.zeros(max_len, d_model)
+        position = torch.arange(0, max_len, dtype=torch.float).unsqueeze(1)
+        div_term = torch.exp(torch.arange(0, d_model, 2).float() * (-math.log(10000.0) / d_model))
+        pe[:, 0::2] = torch.sin(position * div_term)
+        pe[:, 1::2] = torch.cos(position * div_term)
+        pe = pe.unsqueeze(0)  # (1, max_len, d_model)
+        self.register_buffer('pe', pe)
+
+    def forward(self, x):
+        """
+        Args:
+            x: (batch_size, seq_len, d_model)
+        """
+        return x + self.pe[:, :x.size(1), :]
 
 
 class DNN(nn.Module):
@@ -10,6 +30,11 @@ class DNN(nn.Module):
         output_dim=2,
         scan_history_length=4,
         prediction_steps=1,
+        d_model=256,
+        nhead=8,
+        num_layers=4,
+        dim_feedforward=512,
+        dropout=0.1,
     ):
         """
         Args:
@@ -17,31 +42,39 @@ class DNN(nn.Module):
             output_dim: 各ステップの出力次元（throttle, angleで2）
             scan_history_length: スキャンデータの履歴長
             prediction_steps: 予測する未来のステップ数
+            d_model: Transformerの隠れ層次元数
+            nhead: Multi-head Attentionのヘッド数
+            num_layers: Transformer Encoderの層数
+            dim_feedforward: Feedforward層の次元数
+            dropout: ドロップアウト率
         """
         super().__init__()
         self.scan_history_length = scan_history_length
         self.prediction_steps = prediction_steps
+        self.d_model = d_model
 
-        # スキャン履歴用の畳み込み層
-        self.conv1 = nn.Conv1d(scan_history_length, 24, kernel_size=5, stride=2, padding=2)
-        self.conv2 = nn.Conv1d(24, 36, kernel_size=5, stride=2, padding=2)
-        self.conv3 = nn.Conv1d(36, 48, kernel_size=5, stride=2, padding=2)
-        self.conv4 = nn.Conv1d(48, 64, kernel_size=3, stride=1, padding=1)
-        self.conv5 = nn.Conv1d(64, 64, kernel_size=3, stride=1, padding=1)
-
-        def conv1d_out_len(L, kernel, pad, stride):
-            return (L + 2 * pad - kernel) // stride + 1
-
-        L = input_dim
-        for k, p, s in [(5, 2, 2), (5, 2, 2), (5, 2, 2), (3, 1, 1), (3, 1, 1)]:
-            L = conv1d_out_len(L, k, p, s)
-        flatten_dim = L * 64
-
-        self.fc1 = nn.Linear(flatten_dim, 100)
-        self.fc2 = nn.Linear(100, 50)
-        self.fc3 = nn.Linear(50, 10)
-        self.fc4 = nn.Linear(10, prediction_steps * output_dim)
-
+        # スキャンデータを埋め込み空間に射影
+        self.scan_embedding = nn.Linear(input_dim, d_model)
+        
+        # Positional Encoding
+        self.pos_encoder = PositionalEncoding(d_model, max_len=scan_history_length)
+        
+        # Transformer Encoder
+        encoder_layer = nn.TransformerEncoderLayer(
+            d_model=d_model,
+            nhead=nhead,
+            dim_feedforward=dim_feedforward,
+            dropout=dropout,
+            batch_first=True,
+        )
+        self.transformer_encoder = nn.TransformerEncoder(encoder_layer, num_layers=num_layers)
+        
+        # 出力層
+        self.fc1 = nn.Linear(d_model * scan_history_length, 256)
+        self.fc2 = nn.Linear(256, 128)
+        self.fc3 = nn.Linear(128, prediction_steps * output_dim)
+        
+        self.dropout = nn.Dropout(dropout)
         self.relu = nn.ReLU()
 
     def forward(self, x):
@@ -49,23 +82,29 @@ class DNN(nn.Module):
         Args:
             x: スキャンデータ (batch_size, scan_history_length, scan_dim)
         """
-        # CNNでスキャンデータを処理
-        x = self.relu(self.conv1(x))
-        x = self.relu(self.conv2(x))
-        x = self.relu(self.conv3(x))
-        x = self.relu(self.conv4(x))
-        x = self.relu(self.conv5(x))
-        x = x.flatten(1)
-
+        # スキャンデータを埋め込み
+        x = self.scan_embedding(x)  # (batch_size, scan_history_length, d_model)
+        
+        # Positional Encoding を追加
+        x = self.pos_encoder(x)
+        
+        # Transformer Encoder
+        x = self.transformer_encoder(x)  # (batch_size, scan_history_length, d_model)
+        
+        # 系列全体を結合
+        x = x.flatten(1)  # (batch_size, scan_history_length * d_model)
+        
+        # 全結合層で予測
         x = self.relu(self.fc1(x))
+        x = self.dropout(x)
         x = self.relu(self.fc2(x))
-        x = self.relu(self.fc3(x))
-        x = self.fc4(x)
-
+        x = self.dropout(x)
+        x = self.fc3(x)
+        
         # (batch_size, prediction_steps * output_dim) -> (batch_size, prediction_steps, output_dim)
         batch_size = x.size(0)
         x = x.view(batch_size, self.prediction_steps, -1)
-
+        
         return x
 
 
@@ -75,12 +114,22 @@ class Model:
         path,
         prediction_steps=1,
         scan_history_length=4,
+        d_model=256,
+        nhead=8,
+        num_layers=4,
+        dim_feedforward=512,
+        dropout=0.1,
     ):
         """
         Args:
             path: モデルの重みファイルのパス（.pthファイル）
             prediction_steps: 予測ステップ数（学習時と同じ値を指定）
             scan_history_length: スキャン履歴長（学習時と同じ値を指定）
+            d_model: Transformerの隠れ層次元数
+            nhead: Multi-head Attentionのヘッド数
+            num_layers: Transformer Encoderの層数
+            dim_feedforward: Feedforward層の次元数
+            dropout: ドロップアウト率
         """
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.prediction_steps = prediction_steps
@@ -90,6 +139,11 @@ class Model:
         self.model = DNN(
             scan_history_length=scan_history_length,
             prediction_steps=prediction_steps,
+            d_model=d_model,
+            nhead=nhead,
+            num_layers=num_layers,
+            dim_feedforward=dim_feedforward,
+            dropout=dropout,
         )
 
         # チェックポイントを読み込み
@@ -183,6 +237,7 @@ class Model:
             return predictions
         else:
             return predictions[0]
+
 
 # if __name__ == "__main__":
 #     # モデルの動作確認
