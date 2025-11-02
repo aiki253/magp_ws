@@ -23,7 +23,7 @@ class NNControllerNode(Node):
         self.declare_parameter('scan_topic', '/scan')
         self.declare_parameter('pwm_topic', '/torch_pwm')
         self.declare_parameter('prediction_steps', 1)
-        self.declare_parameter('scan_history_length', 10)
+        self.declare_parameter('scan_history_length', 15)
         self.declare_parameter('scan_history_stride', 20)
         
         # パラメータの取得
