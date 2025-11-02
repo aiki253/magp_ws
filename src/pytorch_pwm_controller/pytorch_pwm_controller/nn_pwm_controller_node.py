@@ -35,7 +35,7 @@ class NNControllerNode(Node):
         # モデルパスが指定されていない場合はデフォルトパスを使用
         if not model_path:
             package_share_dir = get_package_share_directory('pytorch_pwm_controller')
-            model_path = os.path.join(package_share_dir, 'model', 'model.pth')
+            model_path = os.path.join(package_share_dir, 'model', 'transformer_len20_str15_v4.pth')
         
         scan_topic = self.get_parameter('scan_topic').get_parameter_value().string_value
         pwm_topic = self.get_parameter('pwm_topic').get_parameter_value().string_value
