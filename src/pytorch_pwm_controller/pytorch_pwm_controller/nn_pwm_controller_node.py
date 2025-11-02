@@ -129,7 +129,7 @@ class NNControllerNode(Node):
             mean_angle_deviation = np.mean(angle_deviations)
             
             # ステアのニュートラルからの平均差分が閾値以下ならストレート、それ以上ならカーブ
-            if mean_angle_deviation <= self.angle_deviation_threshold:
+            if abs(mean_angle_deviation) <= self.angle_deviation_threshold:
                 course_shape_throttle_gain = self.straight_throttle_gain
                 road_type = "straight"
             else:
