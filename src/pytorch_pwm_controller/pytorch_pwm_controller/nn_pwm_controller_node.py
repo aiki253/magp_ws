@@ -22,15 +22,23 @@ class NNControllerNode(Node):
         self.declare_parameter('model_path', '')
         self.declare_parameter('scan_topic', '/scan')
         self.declare_parameter('pwm_topic', '/torch_pwm')
-        self.declare_parameter('prediction_steps', 1)
+        self.declare_parameter('prediction_steps', 120)
         self.declare_parameter('scan_history_length', 10)
         self.declare_parameter('scan_history_stride', 20)
+        self.declare_parameter('straight_throttle_gain', 1.2) # ストレート用の倍率
+        self.declare_parameter('curve_throttle_gain', 1.0)  # カーブ用の倍率
+        self.declare_parameter('angle_neutral', 1580.0) # ニュートラルステア角度（PWM値）
+        self.declare_parameter('angle_deviation_threshold', 120.0) # ステア角度の偏差閾値（PWM値）
         
         # パラメータの取得
         model_path = self.get_parameter('model_path').get_parameter_value().string_value
         prediction_steps = self.get_parameter('prediction_steps').get_parameter_value().integer_value
         self.scan_history_length = self.get_parameter('scan_history_length').get_parameter_value().integer_value
         self.scan_history_stride = self.get_parameter('scan_history_stride').get_parameter_value().integer_value
+        self.straight_throttle_gain = self.get_parameter('straight_throttle_gain').get_parameter_value().double_value
+        self.curve_throttle_gain = self.get_parameter('curve_throttle_gain').get_parameter_value().double_value
+        self.angle_neutral = self.get_parameter('angle_neutral').get_parameter_value().double_value
+        self.angle_deviation_threshold = self.get_parameter('angle_deviation_threshold').get_parameter_value().double_value
         
         # モデルパスが指定されていない場合はデフォルトパスを使用
         if not model_path:
@@ -43,6 +51,9 @@ class NNControllerNode(Node):
         self.get_logger().info(f'Loading model from: {model_path}')
         self.get_logger().info(f'Prediction steps: {prediction_steps}')
         self.get_logger().info(f'Scan history: length={self.scan_history_length}, stride={self.scan_history_stride}')
+        self.get_logger().info(f'Straight throttle gain: {self.straight_throttle_gain}')
+        self.get_logger().info(f'Curve throttle gain: {self.curve_throttle_gain}')
+        self.get_logger().info(f'Angle variance threshold: {self.angle_variance_threshold}')
         
         # モデルの初期化
         try:
@@ -104,21 +115,36 @@ class NNControllerNode(Node):
             )  # shape: (scan_history_length, scan_size)
 
             # 推論実行
-            prediction = self.model.inference_next_step_only(inference_scan)
+            prediction = self.model.inference(inference_scan)
+            prediction = np.array(prediction)  # numpy配列に変換 shape: (prediction_steps, 2)
 
-            # self.get_logger().info(f'DNN output is {prediction[0]:.4f}, {prediction[1]:.4f}')
+            # self.get_logger().info(f'DNN output is {prediction[0, 0]:.4f}, {prediction[0, 1]:.4f}')
             
             # 予測結果を取得 [throttle, angle]
-            throttle = prediction[0]
-            angle = prediction[1]
+            throttle = prediction[0, 0]
+            angle = prediction[0, 1]
+
+            # angle系列のニュートラルからの平均差分を計算
+            angle_deviations = prediction[:, 1] - self.angle_neutral
+            mean_angle_deviation = np.mean(angle_deviations)
+            
+            # ステアのニュートラルからの平均差分が閾値以下ならストレート、それ以上ならカーブ
+            if mean_angle_deviation <= self.angle_deviation_threshold:
+                course_shape_throttle_gain = self.straight_throttle_gain
+                road_type = "straight"
+            else:
+                course_shape_throttle_gain = self.curve_throttle_gain
+                road_type = "curve"
+
+            throttle_scaled = throttle * course_shape_throttle_gain
             
             # TwistStampedメッセージの作成
             pwm_msg = TwistStamped()
             pwm_msg.header.stamp = self.get_clock().now().to_msg()
             pwm_msg.header.frame_id = "base_link"
             
-            # throttle
-            pwm_msg.twist.linear.x = float(throttle)
+            # throttle (コース形状に応じたゲイン適用後のスロットル)
+            pwm_msg.twist.linear.x = float(throttle_scaled)
             pwm_msg.twist.linear.y = 0.0
             pwm_msg.twist.linear.z = 0.0
             
