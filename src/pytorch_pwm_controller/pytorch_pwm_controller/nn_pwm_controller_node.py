@@ -106,7 +106,7 @@ class NNControllerNode(Node):
             # 推論実行
             prediction = self.model.inference_next_step_only(inference_scan)
 
-            self.get_logger().info(f'DNN output is {prediction[0]:.4f}, {prediction[1]:.4f}')
+            # self.get_logger().info(f'DNN output is {prediction[0]:.4f}, {prediction[1]:.4f}')
             
             # 予測結果を取得 [throttle, angle]
             throttle = prediction[0]
