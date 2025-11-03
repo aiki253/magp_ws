@@ -18,12 +18,12 @@ class PwmController(Node):
         self.declare_parameter('steering_channel', 1)
         self.declare_parameter('i2c_address', 0x40)
         self.declare_parameter('motor_min', 1120)
-        self.declare_parameter('motor_max', 1820)
+        self.declare_parameter('motor_max', 1920) #1820
         self.declare_parameter('motor_neutral', 1620)
-        self.declare_parameter('speed_center', 1520)
+        self.declare_parameter('speed_center', 1120) #1520
         self.declare_parameter('speed_limit_lower', 1120)
         self.declare_parameter('speed_limit_upper', 1620)
-        self.declare_parameter('steering_center', 1500)
+        self.declare_parameter('steering_center', 1640) # 1500
         self.declare_parameter('steering_left', 1200)
         self.declare_parameter('steering_right', 1800)
         self.declare_parameter('speed_scale_step', 10)
