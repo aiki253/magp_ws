@@ -23,9 +23,9 @@ class NNControllerNode(Node):
         self.declare_parameter('scan_topic', '/scan')
         self.declare_parameter('pwm_topic', '/torch_pwm')
         self.declare_parameter('prediction_steps', 120)
-        self.declare_parameter('scan_history_length', 15)
-        self.declare_parameter('scan_history_stride', 20)
-        self.declare_parameter('straight_throttle_gain', 1.2) # ストレート用の倍率
+        self.declare_parameter('scan_history_length', 20)
+        self.declare_parameter('scan_history_stride', 15)
+        self.declare_parameter('straight_throttle_gain', 0.9) # ストレート用の倍率
         self.declare_parameter('curve_throttle_gain', 1.0)  # カーブ用の倍率
         self.declare_parameter('angle_neutral', 1580.0) # ニュートラルステア角度（PWM値）
         self.declare_parameter('angle_deviation_threshold', 120.0) # ステア角度の偏差閾値（PWM値）
@@ -42,6 +42,7 @@ class NNControllerNode(Node):
         
         # モデルパスが指定されていない場合はデフォルトパスを使用
         if not model_path:
+            self.get_logger().info('Model do not load, Use defalt model')
             package_share_dir = get_package_share_directory('pytorch_pwm_controller')
             model_path = os.path.join(package_share_dir, 'model', 'model.pth')
         
@@ -56,6 +57,7 @@ class NNControllerNode(Node):
         
         # モデルの初期化
         try:
+            
             self.model = Model(
                 model_path,
                 prediction_steps=prediction_steps,
