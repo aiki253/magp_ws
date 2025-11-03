@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 from launch import LaunchDescription
 from launch_ros.actions import Node
-from launch.actions import DeclareLaunchArgument
 from launch.substitutions import LaunchConfiguration
+from launch.actions import DeclareLaunchArgument
 from ament_index_python.packages import get_package_share_directory
 import os
 
@@ -10,7 +10,7 @@ import os
 def generate_launch_description():
     # パッケージのパスを取得
     package_dir = get_package_share_directory('pytorch_pwm_controller')
-    default_model_path = os.path.join(package_dir, 'model', 'model.pth')
+    default_model_path = os.path.join(package_dir, 'model', 'transformer_len20_str15_stp120_v2.pth')
     
     # Launch引数の定義
     model_path_arg = DeclareLaunchArgument(
