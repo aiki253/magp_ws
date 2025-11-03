@@ -16,7 +16,7 @@ class PwmMuxNode(Node):
         self.declare_parameter('motor_neutral', 1620)
         self.declare_parameter('motor_min', 1100)
         self.declare_parameter('motor_max', 2300)
-        self.declare_parameter('steering_center', 1500)
+        self.declare_parameter('steering_center', 1640) #1500
         self.declare_parameter('steering_left', 1200)
         self.declare_parameter('steering_right', 1800)
         self.declare_parameter('speed_deadzone', 0.05)
