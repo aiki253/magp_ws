@@ -1,37 +1,46 @@
-# Joy Mux
+# mux_pwm
 
-PlayStation®ボタンで手動/自動を切り替えられるジョイスティックマルチプレクサ
+PWM multiplexer node that blends manual joystick input with autonomous model output.
+Supports seamless switching between manual and autonomous modes.
 
-## 機能
+## Node: `pwm_mux_node`
 
-- `/joy` と `/torch_joy` を受信
-- PlayStation®ボタンで手動/自動モードを切り替え
-- `/mux_joy` として統合されたジョイスティックデータを出力
-- `/torch_joy` が利用できない場合は自動的に `/joy` を使用
-- 自動モード中にL2ボタンを押すことで手動補正が可能
+### Subscribed Topics
 
-## 使用方法
+| Topic | Type | Description |
+|-------|------|-------------|
+| `/joy` | `sensor_msgs/Joy` | PS3/PS4 joystick input |
+| `/torch_pwm` | `geometry_msgs/TwistStamped` | Autonomous controller output |
+
+### Published Topics
+
+| Topic | Type | Description |
+|-------|------|-------------|
+| `/mux_pwm` | `geometry_msgs/TwistStamped` | Blended PWM command sent to hardware |
+| `/mux_status` | `std_msgs/String` | JSON: current mode (`manual` / `auto`) |
+| `/manual_gain` | `std_msgs/Float32` | Manual input gain (0.0–1.0) |
+| `/torch_gain` | `std_msgs/Float32` | Model output gain (0.0–1.0) |
+
+### PWM Ranges
+
+| Channel | Min | Neutral | Max |
+|---------|-----|---------|-----|
+| Motor (throttle) | 1100 µs | 1620 µs | 2300 µs |
+| Steering | 1200 µs | 1640 µs | 1800 µs |
+
+### Joystick Controls
+
+| Button / Axis | Action |
+|---------------|--------|
+| PS button | Toggle manual / autonomous mode |
+| L2 (held) | Enable manual blending in auto mode |
+| L2 + D-pad up/down | Adjust manual gain |
+| R2 + D-pad up/down | Adjust model (torch) gain |
+| Left stick vertical | Throttle (manual mode) |
+| Right stick horizontal | Steering (manual mode) |
+
+### Usage
+
 ```bash
-ros2 run joy_mux joy_mux_node
+ros2 run mux_pwm pwm_mux_node
 ```
-
-## トピック
-
-- **入力**:
-  - `/joy` (sensor_msgs/Joy): 手動操作用ジョイスティック
-  - `/torch_joy` (sensor_msgs/Joy): 自動操作用ジョイスティック
-
-- **出力**:
-  - `/mux_joy` (sensor_msgs/Joy): 統合されたジョイスティックデータ
-
-## モード切り替え
-
-PlayStation®ボタン（通常ボタンインデックス12）を押すことでモードを切り替えます。
-
-### 手動モード
-`/joy` のデータをそのまま `/mux_joy` に出力します。
-
-### 自動モード
-`/torch_joy` のデータを `/mux_joy` に出力します。
-
-**PS3のL2ボタン（通常ボタンインデックス8）を押している間**は、`/joy` のaxes[0:3]と `/torch_joy` のaxes[0:3]を足し算した値を出力します。これにより自動制御に手動補正を加えることができます。出力値は-1.0〜1.0の範囲に制限されます。
