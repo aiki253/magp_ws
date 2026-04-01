@@ -10,13 +10,18 @@ def generate_launch_description():
     
     return LaunchDescription([
         # joy_nodeを起動
-        Node(
-            package='joy',
-            executable='joy_node',
-            name='joy_node',
-            parameters=[{
-                'dev': '/dev/input/js0'
-            }]
+        # Node(
+        #     package='joy',
+        #     executable='joy_node',
+        #     name='joy_node',
+        #     parameters=[{
+        #         'dev': '/dev/input/js0'
+        #     }]),
+        
+        # joy_muxを起動（複数ジョイスティック対応、/joy0 /joy1 -> /joy に集約）
+        ExecuteProcess(
+            cmd=['ros2', 'launch', 'joy_mux', 'joy_mux.launch.py'],
+            output='screen'
         ),
         
         # urg_node2を起動
