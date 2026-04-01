@@ -23,8 +23,8 @@ class NNControllerNode(Node):
         self.declare_parameter('scan_topic', '/scan')
         self.declare_parameter('pwm_topic', '/torch_pwm')
         self.declare_parameter('prediction_steps', 1)
-        self.declare_parameter('scan_history_length', 1)
-        self.declare_parameter('scan_history_stride', 1)
+        self.declare_parameter('scan_history_length', 20)
+        self.declare_parameter('scan_history_stride', 10)
         
         # パラメータの取得
         model_path = self.get_parameter('model_path').get_parameter_value().string_value
@@ -35,7 +35,7 @@ class NNControllerNode(Node):
         # モデルパスが指定されていない場合はデフォルトパスを使用
         if not model_path:
             package_share_dir = get_package_share_directory('pytorch_pwm_controller')
-            model_path = os.path.join(package_share_dir, 'model', 'cnn_v2_hist1.pth')
+            model_path = os.path.join(package_share_dir, 'model', 'cnn_v2_hist20.pth')
         
         scan_topic = self.get_parameter('scan_topic').get_parameter_value().string_value
         pwm_topic = self.get_parameter('pwm_topic').get_parameter_value().string_value
