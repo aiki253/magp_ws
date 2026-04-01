@@ -1,18 +1,136 @@
+[🇯🇵 日本語](README_ja.md) | 🇺🇸 English
 
+> 🚧 **Work in progress** — This project is under active development. Documentation and hardware build guide are incomplete.
+
+# MAGP — E2E RC-CAR Project for Minicar Autonomous Grand Prix
+
+> End-to-end imitation learning RC car with 2D LiDAR and PyTorch Transformer
+
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![ROS2](https://img.shields.io/badge/ROS2-Humble-blue)](https://docs.ros.org/en/humble/)
+
+## Overview
+
+MAGP is an open-source autonomous miniature car platform that learns to drive by imitating human demonstrations. A 2D LiDAR captures the environment, and a PyTorch Transformer model trained on recorded driving data outputs throttle and steering commands in real time.
+
+Key features:
+- **End-to-End Imitation Learning** — raw LiDAR scan → throttle + steering angle
+- **Transformer-based model** — sequence of scan history as input, multi-step prediction
+- **Seamless manual/auto switching** — PS3 joystick blending via PWM multiplexer
+- **Shared control** — blend autonomous output with manual correction for richer data collection
+- **Easy data collection** — joystick-triggered rosbag recorder with safety checks
+- **M5Stack display** — real-time status visualization on hardware
+
+## System Architecture
 
 ```
-ros2 run pytorch_joy_controller joy_controller_node
+[Hokuyo LiDAR]
+      │ /scan
+      ▼
+[nn_pwm_controller]  ←── PyTorch Transformer (E2E imitation learning)
+      │ /torch_pwm
+      ▼
+[mux_pwm] ←─────────────── [PS3 Joystick]
+      │ /mux_pwm               (manual override / mode switch)
+      ▼
+[pwm_pca9685_controller]
+      │ I2C
+      ▼
+ Motor / Servo
+
+Side channels:
+  [mux_pwm] ──► [bag_recorder]       (data collection)
+  [mux_pwm] ──► [m5stack_visualizer] (status display via serial)
 ```
+
+## Hardware Requirements
+
+> See [docs/hardware.md](docs/hardware.md) for the full build guide (wiring and assembly coming soon).
+
+| Component | Model |
+|-----------|-------|
+| RC car chassis | [Tamiya TT-02](https://www.tamiya.com/cms/english/rc/rcmanual/tt02.pdf) |
+| 2D LiDAR | Hokuyo UST-10LX (Ethernet, cable included) |
+| SBC | NVIDIA Jetson Orin NX |
+| SBC case | Any compatible case (e.g. [Amazon](https://amzn.asia/d/0bSVL3AZ)) |
+| PWM driver | PCA9685 breakout board (I2C) |
+| LiPo battery | [7.4V 2S](https://amzn.asia/d/3W8HEnf) |
+| DC-DC boost converter | [7.4V → 12V](https://amzn.asia/d/dPUERnJ) |
+| Tamiya plug | [connector](https://amzn.asia/d/3aU40sA) |
+| DC barrel jack pigtail cable | check Jetson carrier board jack size |
+| Joystick | PS3 / PS4 |
+| Display | M5Stack Core2 (optional) |
+
+The Jetson Orin NX + UST-10LX combination provides research-grade compute and sensing in a 1/10-scale chassis, making this platform suitable for real machine learning experiments beyond hobbyist prototyping.
+
+## Software Requirements
+
+- ROS2 Humble
+- Python 3.10+
+- PyTorch 2.x
+- `adafruit-circuitpython-pca9685`
+- `pyserial` (for M5Stack visualizer)
+
+## Quick Start
+
+### 1. Build
+
+```bash
+cd magp_ws
+make build
+# or: colcon build --symlink-install
 ```
-ros2 launch urg_node2 urg_node2.launch.py
+
+### 2. Collect Training Data
+
+Connect the PS3 joystick, launch the full system, then drive manually while recording:
+
+```bash
+make run
 ```
+
+Bag recorder joystick controls:
+
+| Button | Action |
+|--------|--------|
+| △ × 3 | Unlock recorder |
+| ■ | Start recording |
+| ● | Stop & save |
+| ✕ | Discard recording |
+
+### 3. Train the Model
+
+> Training scripts are outside this repository. The model expects input shape `(batch, seq_len, 1081)` and outputs `(batch, steps, 2)` (throttle, angle).
+
+Place the trained checkpoint (`.pth`) at a path of your choice and set it as the `model_path` parameter.
+
+### 4. Run Autonomous Mode
+
+```bash
+make run
 ```
-bash joy_controller.sh
-```
+
+Press the **PS button** on the joystick to toggle between **manual** and **autonomous** mode.
+In autonomous mode, hold **L2** to blend manual input with the model output.
+
+## Package Overview
+
+| Package | Node | Description |
+|---------|------|-------------|
+| [pytorch_pwm_controller](src/pytorch_pwm_controller/) | `nn_pwm_controller_node` | PyTorch Transformer inference, publishes PWM commands |
+| [mux_pwm](src/mux_pwm/) | `pwm_mux_node` | Manual/auto PWM multiplexer with joystick blending |
+| [pwm_controller](src/controller/pwm_controller/) | `pwm_pca9685_controller` | PCA9685 I2C hardware PWM driver |
+| [bag_recorder](src/tools/bag_recorder/) | `bag_recorder_node` | Joystick-controlled rosbag recorder |
+| [m5stack_visualizer](src/tools/m5stack_visualizer/) | `m5stack_bridge_node` | Serial bridge to M5Stack Core2 display |
+| [urg_node2](src/urg_node2/) | `urg_node2` | Hokuyo 2D LiDAR driver (by Hokuyo / eSOL) |
+
+## License
+
+This project (excluding `urg_node2`) is licensed under the [MIT License](LICENSE).
+Copyright (c) 2025 K.Aiki, K.Teruyuki
+
+`urg_node2` is licensed under the Apache License 2.0. See [src/urg_node2/LICENSE](src/urg_node2/LICENSE).
 
 ---
 
-
-```
-ros2 bag record -a
-```
+Documentation supported by [Claude](https://claude.ai) (Anthropic).

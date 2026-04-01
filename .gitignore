@@ -6,6 +6,9 @@ build
 # ROS bag file
 rosbag
 
+# Data files
+data/*
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
