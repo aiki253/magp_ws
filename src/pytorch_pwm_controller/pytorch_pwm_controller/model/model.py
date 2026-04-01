@@ -28,13 +28,13 @@ class DNN(nn.Module):
         self,
         input_dim=1081,
         output_dim=2,
-        scan_history_length=4,
+        scan_history_length=20,
         prediction_steps=1,
-        d_model=256,
-        nhead=8,
-        num_layers=3,
+        d_model=128,
+        nhead=4,
+        num_layers=2,
         dim_feedforward=512,
-        dropout=0.1,
+        dropout=0.0,
     ):
         """
         Args:
@@ -74,7 +74,7 @@ class DNN(nn.Module):
         self.fc2 = nn.Linear(256, 128)
         self.fc3 = nn.Linear(128, prediction_steps * output_dim)
         
-        self.dropout = nn.Dropout(dropout)
+        # self.dropout = nn.Dropout(dropout)
         self.relu = nn.ReLU()
 
     def forward(self, x):
@@ -96,9 +96,9 @@ class DNN(nn.Module):
         
         # 全結合層で予測
         x = self.relu(self.fc1(x))
-        x = self.dropout(x)
+        # x = self.dropout(x)
         x = self.relu(self.fc2(x))
-        x = self.dropout(x)
+        # x = self.dropout(x)
         x = self.fc3(x)
         
         # (batch_size, prediction_steps * output_dim) -> (batch_size, prediction_steps, output_dim)
@@ -113,12 +113,12 @@ class Model:
         self,
         path,
         prediction_steps=1,
-        scan_history_length=4,
-        d_model=256,
-        nhead=8,
-        num_layers=3,
+        scan_history_length=20,
+        d_model=128,
+        nhead=4,
+        num_layers=2,
         dim_feedforward=512,
-        dropout=0.1,
+        dropout=0.0,
     ):
         """
         Args:
@@ -241,11 +241,11 @@ class Model:
 
 # if __name__ == "__main__":
 #     # モデルの動作確認
-#     model_path = "../model/model.pth"
-#     model = Model(model_path, prediction_steps=40, scan_history_length=4)
+#     model_path = "../model/transformer/transformer_ver1.pth"
+#     model = Model(model_path, prediction_steps=120, scan_history_length=20)
 
 #     # ダミースキャンデータ
-#     dummy_scan = np.random.rand(4, 1081).astype(np.float32)*10
+#     dummy_scan = np.random.rand(20, 1081).astype(np.float32)
 
 #     # 推論実行
 #     preds = model.inference(dummy_scan)
