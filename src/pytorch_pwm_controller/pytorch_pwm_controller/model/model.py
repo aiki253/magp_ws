@@ -1,26 +1,6 @@
 import numpy as np
 import torch
 import torch.nn as nn
-import math
-
-
-class PositionalEncoding(nn.Module):
-    def __init__(self, d_model, max_len=5000):
-        super().__init__()
-        pe = torch.zeros(max_len, d_model)
-        position = torch.arange(0, max_len, dtype=torch.float).unsqueeze(1)
-        div_term = torch.exp(torch.arange(0, d_model, 2).float() * (-math.log(10000.0) / d_model))
-        pe[:, 0::2] = torch.sin(position * div_term)
-        pe[:, 1::2] = torch.cos(position * div_term)
-        pe = pe.unsqueeze(0)  # (1, max_len, d_model)
-        self.register_buffer('pe', pe)
-
-    def forward(self, x):
-        """
-        Args:
-            x: (batch_size, seq_len, d_model)
-        """
-        return x + self.pe[:, :x.size(1), :]
 
 
 class DNN(nn.Module):
@@ -28,83 +8,86 @@ class DNN(nn.Module):
         self,
         input_dim=1081,
         output_dim=2,
-        scan_history_length=20,
+        scan_history_length=1,  # 1フレームのみ使用
         prediction_steps=1,
-        d_model=128,
-        nhead=4,
-        num_layers=2,
-        dim_feedforward=512,
         dropout=0.0,
     ):
         """
+        TinyLidarNet ベースの1D CNN モデル（1フレーム入力）
         Args:
-            input_dim: 入力スキャンデータの次元数
-            output_dim: 各ステップの出力次元（throttle, angleで2）
-            scan_history_length: スキャンデータの履歴長
-            prediction_steps: 予測する未来のステップ数
-            d_model: Transformerの隠れ層次元数
-            nhead: Multi-head Attentionのヘッド数
-            num_layers: Transformer Encoderの層数
-            dim_feedforward: Feedforward層の次元数
+            input_dim: 入力スキャンデータの次元数（デフォルト: 1081）
+            output_dim: 出力次元（throttle, angle で 2）
+            scan_history_length: 履歴フレーム数（このモデルでは1を想定）
+            prediction_steps: 予測ステップ数
             dropout: ドロップアウト率
         """
         super().__init__()
         self.scan_history_length = scan_history_length
         self.prediction_steps = prediction_steps
-        self.d_model = d_model
+        self.input_dim = input_dim
 
-        # スキャンデータを埋め込み空間に射影
-        self.scan_embedding = nn.Linear(input_dim, d_model)
-        
-        # Positional Encoding
-        self.pos_encoder = PositionalEncoding(d_model, max_len=scan_history_length)
-        
-        # Transformer Encoder
-        encoder_layer = nn.TransformerEncoderLayer(
-            d_model=d_model,
-            nhead=nhead,
-            dim_feedforward=dim_feedforward,
-            dropout=dropout,
-            batch_first=True,
+        # 論文 Fig.3 に基づく 5層 1D Conv
+        # input: (batch, 1, input_dim)
+        self.conv_layers = nn.Sequential(
+            # Conv1: kernel=10, stride=4 -> (batch, 24, (input_dim-10)//4+1)
+            nn.Conv1d(in_channels=1,  out_channels=24, kernel_size=10, stride=4),
+            nn.ReLU(),
+            # Conv2: kernel=8, stride=4
+            nn.Conv1d(in_channels=24, out_channels=36, kernel_size=8,  stride=4),
+            nn.ReLU(),
+            # Conv3: kernel=4, stride=2
+            nn.Conv1d(in_channels=36, out_channels=48, kernel_size=4,  stride=2),
+            nn.ReLU(),
+            # Conv4: kernel=3, stride=1
+            nn.Conv1d(in_channels=48, out_channels=64, kernel_size=3,  stride=1),
+            nn.ReLU(),
+            # Conv5: kernel=3, stride=1
+            nn.Conv1d(in_channels=64, out_channels=64, kernel_size=3,  stride=1),
+            nn.ReLU(),
         )
-        self.transformer_encoder = nn.TransformerEncoder(encoder_layer, num_layers=num_layers)
-        
-        # 出力層
-        self.fc1 = nn.Linear(d_model * scan_history_length, 256)
-        self.fc2 = nn.Linear(256, 128)
-        self.fc3 = nn.Linear(128, prediction_steps * output_dim)
-        
-        # self.dropout = nn.Dropout(dropout)
-        self.relu = nn.ReLU()
+
+        # Conv後のフラット次元を自動計算
+        with torch.no_grad():
+            dummy = torch.zeros(1, 1, input_dim)
+            conv_out_dim = self.conv_layers(dummy).flatten(1).shape[1]
+
+        # 論文 Fig.3 に基づく 4層 FC
+        self.fc_layers = nn.Sequential(
+            nn.Linear(conv_out_dim, 1792),
+            nn.ReLU(),
+            nn.Dropout(dropout),
+            nn.Linear(1792, 100),
+            nn.ReLU(),
+            nn.Dropout(dropout),
+            nn.Linear(100, 50),
+            nn.ReLU(),
+            nn.Linear(50, prediction_steps * output_dim),
+        )
 
     def forward(self, x):
         """
         Args:
-            x: スキャンデータ (batch_size, scan_history_length, scan_dim)
+            x: (batch_size, scan_history_length, input_dim)
+               scan_history_length=1 の場合: (batch, 1, 1081)
         """
-        # スキャンデータを埋め込み
-        x = self.scan_embedding(x)  # (batch_size, scan_history_length, d_model)
-        
-        # Positional Encoding を追加
-        x = self.pos_encoder(x)
-        
-        # Transformer Encoder
-        x = self.transformer_encoder(x)  # (batch_size, scan_history_length, d_model)
-        
-        # 系列全体を結合
-        x = x.flatten(1)  # (batch_size, scan_history_length * d_model)
-        
-        # 全結合層で予測
-        x = self.relu(self.fc1(x))
-        # x = self.dropout(x)
-        x = self.relu(self.fc2(x))
-        # x = self.dropout(x)
-        x = self.fc3(x)
-        
-        # (batch_size, prediction_steps * output_dim) -> (batch_size, prediction_steps, output_dim)
         batch_size = x.size(0)
-        x = x.view(batch_size, self.prediction_steps, -1)
-        
+
+        # 最新フレームのみ使用（history=1 を想定）
+        # x: (batch, history, input_dim) -> 最後のフレームを取り出す
+        x = x[:, -1, :]  # (batch, input_dim)
+
+        # Conv1d 用に channel 次元を追加
+        x = x.unsqueeze(1)  # (batch, 1, input_dim)
+
+        # 畳み込み
+        x = self.conv_layers(x)       # (batch, 64, L)
+        x = x.flatten(1)              # (batch, conv_out_dim)
+
+        # 全結合
+        x = self.fc_layers(x)         # (batch, prediction_steps * output_dim)
+
+        # reshape
+        x = x.view(batch_size, self.prediction_steps, -1)  # (batch, steps, output_dim)
         return x
 
 
@@ -113,60 +96,45 @@ class Model:
         self,
         path,
         prediction_steps=1,
-        scan_history_length=20,
-        d_model=128,
-        nhead=4,
-        num_layers=2,
-        dim_feedforward=512,
+        scan_history_length=1,
+        input_dim=1081,
         dropout=0.0,
     ):
         """
         Args:
-            path: モデルの重みファイルのパス（.pthファイル）
-            prediction_steps: 予測ステップ数（学習時と同じ値を指定）
-            scan_history_length: スキャン履歴長（学習時と同じ値を指定）
-            d_model: Transformerの隠れ層次元数
-            nhead: Multi-head Attentionのヘッド数
-            num_layers: Transformer Encoderの層数
-            dim_feedforward: Feedforward層の次元数
+            path: モデル重みファイルのパス（.pth）
+            prediction_steps: 予測ステップ数（学習時と同じ値）
+            scan_history_length: スキャン履歴長（学習時と同じ値）
+            input_dim: スキャンデータの次元数
             dropout: ドロップアウト率
         """
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.prediction_steps = prediction_steps
         self.scan_history_length = scan_history_length
 
-        # モデルのインスタンスを作成
         self.model = DNN(
+            input_dim=input_dim,
             scan_history_length=scan_history_length,
             prediction_steps=prediction_steps,
-            d_model=d_model,
-            nhead=nhead,
-            num_layers=num_layers,
-            dim_feedforward=dim_feedforward,
             dropout=dropout,
         )
 
-        # チェックポイントを読み込み
         checkpoint = torch.load(path, map_location=self.device, weights_only=True)
-        
-        # モデルの重みを読み込み
-        self.model.load_state_dict(checkpoint['model_state_dict'])
+        self.model.load_state_dict(checkpoint["model_state_dict"])
 
-        # 正規化統計量を読み込み
-        self.scan_mean = checkpoint.get('scan_mean', None)
-        self.scan_std = checkpoint.get('scan_std', None)
-        self.target_mean = checkpoint.get('target_mean', None)
-        self.target_std = checkpoint.get('target_std', None)
+        # 正規化統計量
+        self.scan_mean   = checkpoint.get("scan_mean",   None)
+        self.scan_std    = checkpoint.get("scan_std",    None)
+        self.target_mean = checkpoint.get("target_mean", None)
+        self.target_std  = checkpoint.get("target_std",  None)
 
-        # デバイスに転送
         if self.scan_mean is not None:
             self.scan_mean = self.scan_mean.to(self.device)
-            self.scan_std = self.scan_std.to(self.device)
+            self.scan_std  = self.scan_std.to(self.device)
         if self.target_mean is not None:
             self.target_mean = self.target_mean.to(self.device)
-            self.target_std = self.target_std.to(self.device)
+            self.target_std  = self.target_std.to(self.device)
 
-        # デバイスに転送して評価モードに設定
         self.model.to(self.device)
         self.model.eval()
 
@@ -174,79 +142,42 @@ class Model:
         print(f"Normalization stats loaded: scan={self.scan_mean is not None}, "
               f"target={self.target_mean is not None}")
 
-    def _normalize_scan(self, scan_data):
-        """スキャンデータを正規化"""
-        if self.scan_mean is not None and self.scan_std is not None:
-            return (scan_data - self.scan_mean) / (self.scan_std + 1e-8)
-        return scan_data
+    def _normalize_scan(self, x):
+        if self.scan_mean is not None:
+            return (x - self.scan_mean) / (self.scan_std + 1e-8)
+        return x
 
-    def _denormalize_target(self, target_data):
-        """ターゲットデータを逆正規化"""
-        if self.target_mean is not None and self.target_std is not None:
-            return target_data * self.target_std + self.target_mean
-        return target_data
+    def _denormalize_target(self, x):
+        if self.target_mean is not None:
+            return x * self.target_std + self.target_mean
+        return x
 
     def inference(self, scan_ranges: np.ndarray) -> list:
         """
-        推論を実行
-
         Args:
-            scan_ranges: スキャンデータ (scan_history_length, scan_dim) の形状
-
+            scan_ranges: (scan_history_length, input_dim) の numpy 配列
         Returns:
-            予測結果のリスト
-            - prediction_steps=1: [throttle, angle]
-            - prediction_steps>1: [[throttle1, angle1], [throttle2, angle2], ...]
+            prediction_steps=1 -> [throttle, angle]
+            prediction_steps>1 -> [[t1,a1], [t2,a2], ...]
         """
-        # 生データをテンソルに変換
-        input_data = torch.from_numpy(np.array(scan_ranges, dtype=np.float32)).unsqueeze(0)
-        input_data = input_data.to(self.device)
+        inp = torch.from_numpy(np.array(scan_ranges, dtype=np.float32)).unsqueeze(0)
+        inp = inp.to(self.device)
+        inp = self._normalize_scan(inp)
 
-        # 正規化
-        input_data = self._normalize_scan(input_data)
-
-        # 推論
         with torch.no_grad():
-            output = self.model(input_data)
-            # 逆正規化して生データに戻す
-            output = self._denormalize_target(output)
+            out = self.model(inp)
+            out = self._denormalize_target(out)
 
-        # (1, prediction_steps, 2) -> (prediction_steps, 2)
-        predictions = output.cpu().numpy().squeeze(0)
+        preds = out.cpu().numpy().squeeze(0)  # (prediction_steps, 2)
 
         if self.prediction_steps == 1:
-            # 単一ステップの場合は1次元リストを返す
-            return predictions.flatten().tolist()
-        else:
-            # 複数ステップの場合は2次元リストを返す
-            return predictions.tolist()
+            return preds.flatten().tolist()
+        return preds.tolist()
 
     def inference_next_step_only(self, scan_ranges: np.ndarray) -> list:
-        """
-        次のステップのみを予測（複数ステップモデルでも最初のステップだけ返す）
-
-        Args:
-            scan_ranges: スキャンデータ (scan_history_length, scan_dim) の形状
-
-        Returns:
-            次ステップの予測 [throttle, angle]
-        """
-        predictions = self.inference(scan_ranges)
-
+        preds = self.inference(scan_ranges)
         if self.prediction_steps == 1:
-            return predictions
-        else:
-            return predictions[0]
+            return preds
+        return preds[0]
+    
 
-
-# if __name__ == "__main__":
-#     # モデルの動作確認
-#     model_path = "../model/transformer/transformer_ver1.pth"
-#     model = Model(model_path, prediction_steps=120, scan_history_length=20)
-
-#     # ダミースキャンデータ
-#     dummy_scan = np.random.rand(20, 1081).astype(np.float32)
-
-#     # 推論実行
-#     preds = model.inference(dummy_scan)
-#     print("Predictions:", preds)
