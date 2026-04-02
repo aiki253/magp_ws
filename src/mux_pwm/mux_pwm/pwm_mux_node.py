@@ -16,13 +16,13 @@ class PwmMuxNode(Node):
         self.declare_parameter('motor_neutral', 1620)
         self.declare_parameter('motor_min', 1100)
         self.declare_parameter('motor_max', 2300)
-        self.declare_parameter('steering_center', 1640) #1500
+        self.declare_parameter('steering_center', 1590) #1500
         self.declare_parameter('steering_left', 1200)
         self.declare_parameter('steering_right', 1800)
         self.declare_parameter('speed_deadzone', 0.05)
         self.declare_parameter('steering_deadzone', 0.05)
         self.declare_parameter('manual_gain', 1.0)
-        self.declare_parameter('torch_gain', 1.1) # torch_pwm倍率のデフォルト値
+        self.declare_parameter('torch_gain', 1.0) # torch_pwm倍率のデフォルト値
         self.declare_parameter('gain_step', 0.2)
         self.declare_parameter('torch_gain_step', 0.1)
         self.declare_parameter('ps_button_index', 12) # PSボタンインデックス
