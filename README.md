@@ -46,6 +46,7 @@ Side channels:
 ## Hardware Requirements
 
 > See [docs/hardware.md](docs/hardware.md) for the full build guide (wiring and assembly coming soon).
+> 3D-printable parts (STL/STEP/Fusion 360 source) are in [hardware/](hardware/).
 
 | Component | Model |
 |-----------|-------|

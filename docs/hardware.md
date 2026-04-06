@@ -31,7 +31,8 @@ MAGP uses a high-spec configuration relative to its mini car form factor — **N
 | 10 | Joystick | PS3 / PS4 | USB or Bluetooth |
 | 11 | Display | M5Stack Core2 | Optional, USB serial to Jetson |
 
-> **Mounting:** All parts except the PCA9685 are mounted using 3D-printed brackets. STL files will be provided in this repository.
+> **Mounting:** All parts except the PCA9685 are mounted using 3D-printed brackets.
+> CAD data (STL / STEP / Fusion 360 source) are available in [hardware/base_plate/](../hardware/base_plate/).
 
 ---
 
@@ -165,7 +166,8 @@ MAGPは、1/10スケールのミニカーサイズながら研究用途として
 | 10 | ジョイスティック | PS3 / PS4 | USBまたはBluetooth |
 | 11 | ディスプレイ | M5Stack Core2 | オプション、JetsonにUSBシリアル接続 |
 
-> **固定方法：** PCA9685以外の各部品は3Dプリンターで印刷したブラケットで固定します。STLファイルはこのリポジトリに追加予定です。
+> **固定方法：** PCA9685以外の各部品は3Dプリンターで印刷したブラケットで固定します。
+> CADデータ（STL / STEP / Fusion 360 ソース）は [hardware/base_plate/](../hardware/base_plate/) にあります。
 
 ---
 

@@ -46,6 +46,7 @@
 ## ハードウェア要件
 
 > 配線・組み立て手順は [docs/hardware.md](docs/hardware.md) を参照してください（準備中）。
+> 3Dプリント用パーツ（STL / STEP / Fusion 360 ソース）は [hardware/](hardware/) にあります。
 
 | 部品 | 型番 |
 |------|------|
