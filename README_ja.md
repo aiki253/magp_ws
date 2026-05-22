@@ -101,9 +101,34 @@ bagレコーダーのジョイスティック操作：
 
 ### 3. モデルの学習
 
-> 学習スクリプトはこのリポジトリには含まれていません。モデルの入力形状は `(batch, seq_len, 1081)`、出力は `(batch, steps, 2)`（スロットル、角度）です。
+rosbagファイルを読み込むためのPython依存ライブラリをインストールします：
 
-学習済みチェックポイント（`.pth`）を任意のパスに配置し、`model_path` パラメータに設定してください。
+```bash
+pip install rosbags
+```
+
+収集したrosbagデータを `dataset/train/` 以下に配置し（例：`dataset/train/YYYYMMDD/`）、学習スクリプトを実行します：
+
+```bash
+cd training_src
+python train.py
+```
+
+`training_src/train.py` 末尾の主なパラメータ（必要に応じて編集）：
+
+| パラメータ | デフォルト値 | 説明 |
+|-----------|------------|------|
+| `bag_paths` | `../dataset/train/20260401` | rosbagディレクトリのパス |
+| `model_save_path` | `../model/transformer/model.pth` | モデルの保存先パス |
+| `scan_history_length` | `20` | 入力シーケンスのスキャンフレーム数 |
+| `scan_history_stride` | `10` | フレーム間のストライド |
+| `epochs` | `128` | 最大エポック数 |
+| `learning_rate` | `0.0001` | 学習率 |
+
+検証lossが最小のベストチェックポイントは `model/checkpoints/best_model.pth` に保存されます。
+`checkpoint_interval` エポックごとに定期チェックポイントも保存され、10エポック改善がない場合はアーリーストッピングが発動します。
+
+保存された `.pth` ファイルのパスをlaunchファイルの `model_path` パラメータに設定してください。
 
 ### 4. 自律走行モードの実行
 

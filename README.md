@@ -101,9 +101,34 @@ Bag recorder joystick controls:
 
 ### 3. Train the Model
 
-> Training scripts are outside this repository. The model expects input shape `(batch, seq_len, 1081)` and outputs `(batch, steps, 2)` (throttle, angle).
+Install the additional Python dependency for reading rosbag files:
 
-Place the trained checkpoint (`.pth`) at a path of your choice and set it as the `model_path` parameter.
+```bash
+pip install rosbags
+```
+
+Place collected rosbag data under `dataset/train/` (e.g., `dataset/train/YYYYMMDD/`), then run:
+
+```bash
+cd training_src
+python train.py
+```
+
+Key parameters at the bottom of `training_src/train.py` (edit as needed):
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `bag_paths` | `../dataset/train/20260401` | Path to rosbag directory |
+| `model_save_path` | `../model/transformer/model.pth` | Output model path |
+| `scan_history_length` | `20` | Number of scan frames in input sequence |
+| `scan_history_stride` | `10` | Stride between frames |
+| `epochs` | `128` | Max training epochs |
+| `learning_rate` | `0.0001` | Learning rate |
+
+The best checkpoint (lowest validation loss) is saved to `model/checkpoints/best_model.pth`.
+Periodic checkpoints are saved every `checkpoint_interval` epochs, and early stopping triggers after 10 epochs without improvement.
+
+Set `model_path` in the launch file to point to the saved `.pth` file.
 
 ### 4. Run Autonomous Mode
 
