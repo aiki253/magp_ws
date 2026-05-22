@@ -14,8 +14,8 @@ class PwmController(Node):
         super().__init__('pwm_controller')
         
         # パラメータの宣言
-        self.declare_parameter('motor_channel', 0)
-        self.declare_parameter('steering_channel', 1)
+        self.declare_parameter('motor_channel', 15) # モーター用のPWMチャンネル（例: 0）
+        self.declare_parameter('steering_channel', 1) # ステアリング用のPWMチャンネル（例: 1）
         self.declare_parameter('i2c_address', 0x40)
         self.declare_parameter('motor_min', 1120)
         self.declare_parameter('motor_max', 1920) #1820
