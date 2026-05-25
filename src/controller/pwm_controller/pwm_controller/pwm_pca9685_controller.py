@@ -14,18 +14,18 @@ class PwmController(Node):
         super().__init__('pwm_controller')
         
         # パラメータの宣言
-        self.declare_parameter('motor_channel', 0)
+        self.declare_parameter('motor_channel', 15)
         self.declare_parameter('steering_channel', 1)
         self.declare_parameter('i2c_address', 0x40)
-        self.declare_parameter('motor_min', 1120)
-        self.declare_parameter('motor_max', 1920) #1820
+        self.declare_parameter('motor_min', 1250)
+        self.declare_parameter('motor_max', 2700) #1820
         self.declare_parameter('motor_neutral', 1620)
         self.declare_parameter('speed_center', 1120) #1520
         self.declare_parameter('speed_limit_lower', 1120)
         self.declare_parameter('speed_limit_upper', 1620)
-        self.declare_parameter('steering_center', 1590) # 1500
-        self.declare_parameter('steering_left', 1200)
-        self.declare_parameter('steering_right', 1800)
+        self.declare_parameter('steering_center', 1265) # 1590
+        self.declare_parameter('steering_left', 950)
+        self.declare_parameter('steering_right', 1740)
         self.declare_parameter('speed_scale_step', 10)
         self.declare_parameter('l1_button_index', 4)
         self.declare_parameter('r1_button_index', 5)

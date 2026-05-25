@@ -14,11 +14,11 @@ class PwmMuxNode(Node):
         
         # パラメータの宣言
         self.declare_parameter('motor_neutral', 1620)
-        self.declare_parameter('motor_min', 1100)
-        self.declare_parameter('motor_max', 2300)
-        self.declare_parameter('steering_center', 1590) #1500
-        self.declare_parameter('steering_left', 1200)
-        self.declare_parameter('steering_right', 1800)
+        self.declare_parameter('motor_min', 1250)
+        self.declare_parameter('motor_max', 2700)
+        self.declare_parameter('steering_center', 1265) #1500
+        self.declare_parameter('steering_left', 950)
+        self.declare_parameter('steering_right', 1740)
         self.declare_parameter('speed_deadzone', 0.05)
         self.declare_parameter('steering_deadzone', 0.05)
         self.declare_parameter('manual_gain', 1.0)
@@ -115,10 +115,10 @@ class PwmMuxNode(Node):
             return float(self.STEERING_CENTER)
         elif joy_value > 0:
             # 右: 1500 → 1800
-            return float(self.STEERING_CENTER + (self.STEERING_RIGHT - self.STEERING_CENTER) * joy_value)
+            return float(self.STEERING_CENTER + (self.STEERING_LEFT - self.STEERING_CENTER) * joy_value)
         else:
             # 左: 1500 → 1200
-            return float(self.STEERING_CENTER + (self.STEERING_CENTER - self.STEERING_LEFT) * joy_value)
+            return float(self.STEERING_CENTER + (self.STEERING_CENTER - self.STEERING_RIGHT) * joy_value)
     
     def apply_torch_gain(self, torch_pwm_msg):
         """
