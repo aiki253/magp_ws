@@ -52,15 +52,15 @@ class NNControllerNode(Node):
         # モデルパスが指定されていない場合はデフォルトパスを使用
         package_share_dir = get_package_share_directory('pytorch_pwm_controller')
         if not model_path:
-            model_path = os.path.join(package_share_dir, 'model', 'model_v6.pth')
+            model_path = os.path.join(package_share_dir, 'model', 'model_v7.pth')
         def _resolve(param, default):
             p = self.get_parameter(param).get_parameter_value().string_value
             return p if p else os.path.join(package_share_dir, 'model', default)
         self._button_model_paths = {
-            self.btn_square:   _resolve('model_square_path',   'model_v5.pth'),
-            self.btn_cross:    _resolve('model_cross_path',    'model_v6.pth'),
+            self.btn_square:   _resolve('model_square_path',   'model_v10_fine5.pth'),
+            self.btn_cross:    _resolve('model_cross_path',    'model_v10_fine10.pth'),
             self.btn_circle:   _resolve('model_circle_path',   'model_v7.pth'),
-            self.btn_triangle: _resolve('model_triangle_path', 'model_v8.pth'),
+            self.btn_triangle: _resolve('model_triangle_path', 'model_v6.pth'),
         }
         
         scan_topic = self.get_parameter('scan_topic').get_parameter_value().string_value
