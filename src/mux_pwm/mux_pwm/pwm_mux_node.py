@@ -177,7 +177,7 @@ class PwmMuxNode(Node):
         
         # 手動加算: mux = torch + gain * manual_offset
         mixed_motor = torch_motor + self.manual_gain * manual_motor_offset
-        mixed_steering = torch_steering + self.manual_gain * manual_steering_offset
+        mixed_steering = torch_steering + 3 * manual_steering_offset
         
         # クリッピング
         output_msg.twist.linear.x = float(max(self.MOTOR_MIN, min(self.MOTOR_MAX, mixed_motor)))
